@@ -41,7 +41,7 @@ projtruth/
 - [x] 狗粮:demo-todo + demo-todoctl 接入,真实报告
 - [x] skill 封装 + 两轮独立审查(P0/P1 全部修复)
 - [x] 自举:本项目 5 条需求 + .projtruth/evidence,`report --strict` 退出 0
-- [ ] 发布(需要用户确认公开仓库)
+- [x] 发布:https://github.com/Libres-coder/projtruth (2026-11-13)
 
 ## 决策台账
 | 时间 | 决策 | 理由 |
