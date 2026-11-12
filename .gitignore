@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.idea/
+.vscode/
+.pytest_cache/
+
+# projtruth working state that is derived, never committed
+.projtruth/evidence-index.json
+.projtruth/*.tmp

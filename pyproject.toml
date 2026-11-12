@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "projtruth"
+version = "1.1.0"
+description = "Requirements, evidence and decisions for a codebase - computed, not declared. MCP server + CLI."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "projtruth contributors"}]
+keywords = ["mcp", "claude-code", "requirements", "traceability", "verification", "agents"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+projtruth = "projtruth.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Libres-coder/projtruth"
+Issues = "https://github.com/Libres-coder/projtruth/issues"
+
+[tool.setuptools]
+packages = ["projtruth"]
