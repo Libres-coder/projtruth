@@ -1,0 +1,3 @@
+{"ts": "2026-11-13 07:36:47", "decision": "Freshness uses git history, not mtimes", "why": "git clone/checkout rewrites every mtime, so mtime-only says 'everything just changed' on a fresh checkout"}
+{"ts": "2026-11-13 07:36:47", "decision": "Only pending and implemented are declarable", "why": "verified and stale are conclusions about evidence; anything a word can change is not a conclusion"}
+{"ts": "2026-11-13 07:36:47", "decision": "Requirements get per-file scope", "why": "whole-repo scope marks every requirement stale on any edit, which people learn to ignore"}
