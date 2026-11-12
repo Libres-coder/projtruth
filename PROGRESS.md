@@ -36,10 +36,12 @@ projtruth/
 - decide / decisions_list
 
 ## 待办
-- [ ] core:store / evidence / report / cli + tests
-- [ ] mcp_server + tests
-- [ ] 狗粮:demo-todo + demo-todoctl 接入,真实报告
-- [ ] skill 封装 + skill-reviewer 审查 + 发布
+- [x] core:store / evidence / report / cli + tests
+- [x] mcp_server + tests
+- [x] 狗粮:demo-todo + demo-todoctl 接入,真实报告
+- [x] skill 封装 + 两轮独立审查(P0/P1 全部修复)
+- [x] 自举:本项目 5 条需求 + .projtruth/evidence,`report --strict` 退出 0
+- [ ] 发布(需要用户确认公开仓库)
 
 ## 决策台账
 | 时间 | 决策 | 理由 |
@@ -47,3 +49,7 @@ projtruth/
 | 11-13 | 形态=MCP(手写 stdio,零依赖) | 跨 agent 通用;与现有工具同一交付风格 |
 | 11-13 | v1 不做代码图谱链接 | 先证核心价值(验收真相可查),v2 再上 graphify 联动 |
 | 11-13 | 状态模型五态 | pending/implemented/verified/stale/unverified 覆盖真实生命周期 |
+| 11-13 | 只有 pending/implemented 可声明 | verified/stale 是证据的结论,能被一句话改掉就不是结论 |
+| 11-13 | 新鲜度以 git 提交时间为主 | clone/checkout 会重写 mtime,"刚克隆全过期"是必现假阳性 |
+| 11-13 | 脏文件按自身 mtime 计时 | 用 `now` 会让"改完立刻重跑证据"永远 stale |
+| 11-13 | 需求级 files 作用域 | 全仓库作用域在真实项目里等于永久飘红 |
