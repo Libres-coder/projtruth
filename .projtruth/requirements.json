@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Status is computed from evidence and real code changes",
+      "status": "pending",
+      "files": [
+        "projtruth/report.py",
+        "projtruth/freshness.py"
+      ],
+      "criteria": [
+        {
+          "id": "R1.1",
+          "text": "A requirement with evidence older than its code reports stale",
+          "judge": "command"
+        },
+        {
+          "id": "R1.2",
+          "text": "A declared verified without evidence reports unverified",
+          "judge": "command"
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "title": "Evidence is indexed from both agent-neutral roots",
+      "status": "pending",
+      "files": [
+        "projtruth/evidence.py"
+      ],
+      "criteria": [
+        {
+          "id": "R2.1",
+          "text": "Files named R<n>-*.md or R<n>.<i>-*.md link to that requirement",
+          "judge": "command"
+        },
+        {
+          "id": "R2.2",
+          "text": "The tier word is read from the body",
+          "judge": "command"
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "title": "MCP server speaks stdio JSON-RPC 2.0 with 8 tools",
+      "status": "pending",
+      "files": [
+        "projtruth/mcp_server.py"
+      ],
+      "criteria": [
+        {
+          "id": "R3.1",
+          "text": "initialize, tools/list and tools/call answer with the request id",
+          "judge": "command"
+        },
+        {
+          "id": "R3.2",
+          "text": "A failing tool returns isError true instead of killing the server",
+          "judge": "command"
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "title": "CLI mirrors the core and gates CI",
+      "status": "pending",
+      "files": [
+        "projtruth/cli.py"
+      ],
+      "criteria": [
+        {
+          "id": "R4.1",
+          "text": "import-spec reads R<n> headings and 验收/Accept bullets",
+          "judge": "command"
+        },
+        {
+          "id": "R4.2",
+          "text": "report --strict exits 1 unless every requirement is verified",
+          "judge": "command"
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "title": "Registry writes are atomic and tolerant of damaged logs",
+      "status": "pending",
+      "files": [
+        "projtruth/store.py"
+      ],
+      "criteria": [
+        {
+          "id": "R5.1",
+          "text": "A corrupt decisions line does not hide the others",
+          "judge": "command"
+        },
+        {
+          "id": "R5.2",
+          "text": "Requirement ids are validated as R<n>",
+          "judge": "command"
+        }
+      ]
+    }
+  ]
+}

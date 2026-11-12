@@ -75,8 +75,11 @@ class McpTests(unittest.TestCase):
         self.assertIn("logged decision", self._text(r))
         r = self._call("decisions_list")
         self.assertIn("d1", self._text(r))
+        r = self._call("req_set_status", {"id": "R1", "status": "implemented"})
+        self.assertIn("R1 -> implemented", self._text(r))
         r = self._call("req_set_status", {"id": "R1", "status": "verified"})
-        self.assertIn("R1 -> verified", self._text(r))
+        self.assertTrue(r["result"]["isError"], "verified must not be declarable")
+        self.assertIn("evidence", self._text(r))
 
     def test_evidence_is_indexed_by_criterion(self):
         d = os.path.join(self.tmp.name, ".projtruth", "evidence")
@@ -98,11 +101,30 @@ class McpTests(unittest.TestCase):
         r = self._call("nope")
         self.assertTrue(r["result"]["isError"])
 
-    def test_parse_error_and_roundtrip_over_stdio(self):
-        resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
-        # the transport writes exactly one line per response
-        self.assertEqual(len(json.dumps(resp)), len(json.dumps(resp)))
-        self.assertNotIn("\n", json.dumps(resp))
+    def test_stdio_survives_malformed_messages(self):
+        """The real transport: one bad line must not take the server down."""
+        import subprocess
+        server = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "projtruth", "mcp_server.py")
+        lines = ["not json",
+                 "[]",
+                 '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+                 '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":[1]}',
+                 '{"jsonrpc":"2.0","id":3,"method":"tools/call",'
+                 '"params":{"name":"req_list","arguments":{}}}']
+        proc = subprocess.run([sys.executable, server],
+                              input="\n".join(lines) + "\n",
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              encoding="utf-8", timeout=60,
+                              env=dict(os.environ, PROJTRUTH_REPO=self.tmp.name))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+        self.assertEqual(len(out), 5, proc.stdout)
+        self.assertEqual(out[0]["error"]["code"], -32700)      # unparseable
+        self.assertEqual(out[1]["error"]["code"], -32600)      # not a JSON object
+        self.assertTrue(out[2]["result"]["tools"])             # still serving
+        self.assertTrue(out[3]["result"]["isError"])           # non-object params
+        self.assertIn("no requirements", out[4]["result"]["content"][0]["text"])
 
     def test_utf8_payload_survives(self):
         r = self._call("req_add", {"id": "R7", "title": "中文标题", "criteria": ["验收通过"]})

@@ -7,13 +7,16 @@ report people trust and one they learn to ignore.
 
 When the repo is a git work tree we ask git instead:
 
-* newest commit that touched the requirement's files (`git log -1 --format=%ct`),
+* newest commit that touched the requirement's files (`git log --full-history`),
   one call per requirement, cached;
-* bumped to "now" when any of those files is uncommitted (`git status --porcelain`),
-  because an uncommitted edit is by definition newer than the evidence.
+* a file with uncommitted changes counts at its **own mtime**, not "now" - an
+  edit at 10:00 and a fresh piece of evidence at 10:05 means the evidence is
+  newer, and returning "now" would call it stale forever;
+* `--full-history` so a change that arrived through a merge is still seen;
+* `-z` + `core.quotePath=false` so paths with spaces or CJK characters are not
+  mangled.
 
-Non-git repos, and requirements with no `files:` globs, fall back to mtimes over
-the whole tree (the v1 behaviour).
+Non-git repos, and requirements with no `files:` globs, fall back to mtimes.
 """
 import fnmatch
 import glob
@@ -34,7 +37,7 @@ EXCLUDES = [":(exclude).projtruth", ":(exclude).claude", ":(exclude).git",
             ":(exclude,glob)**/PROGRESS.md", ":(exclude,glob)**/README*",
             ":(exclude,glob)**/CHANGELOG*", ":(exclude,glob)**/CONTRIBUTING*",
             ":(exclude,glob)**/LICENSE*", ":(exclude,glob)**/*.lock"]
-MAX_PATHSPECS = 200
+MAX_PATHSPECS = 100
 
 
 def _ignored_path(path):
@@ -44,28 +47,40 @@ def _ignored_path(path):
     return any(fnmatch.fnmatch(os.path.basename(p), ig) for ig in DEFAULT_IGNORES)
 
 
-def _run(repo, *args):
-    """Run git in repo; return stdout on exit 0, else None (never raises)."""
-    try:
-        proc = subprocess.run(["git", "-C", repo] + list(args),
-                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                              timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout.decode("utf-8", "replace")
+def _safe_pattern(pattern):
+    """Repo-relative only: an absolute path or '..' can point outside the repo."""
+    p = str(pattern).replace("\\", "/")
+    if os.path.isabs(p) or p.startswith("/") or ".." in p.split("/"):
+        return False
+    return True
+
+
+def _files_under(directory):
+    return [f for f in glob.glob(os.path.join(directory, "**", "*"), recursive=True)
+            if os.path.isfile(f)]
 
 
 def expand(repo, patterns):
-    """Resolve repo-relative globs to existing files (absolute paths, deduped)."""
+    """Resolve repo-relative globs to existing files (absolute paths, deduped).
+
+    A pattern that names a directory means the whole subtree - `files: ["src/api"]`
+    would otherwise match nothing and make the requirement permanently verified.
+    """
     out = []
     for p in patterns:
+        if not _safe_pattern(p):
+            continue
         full = os.path.join(repo, p)
         if any(ch in p for ch in "*?["):
-            out.extend(f for f in glob.glob(full, recursive=True) if os.path.isfile(f))
+            for f in glob.glob(full, recursive=True):
+                if os.path.isfile(f):
+                    out.append(f)
+                elif os.path.isdir(f):
+                    out.extend(_files_under(f))
         elif os.path.isfile(full):
             out.append(full)
+        elif os.path.isdir(full):
+            out.extend(_files_under(full))
     return sorted(set(out))
 
 
@@ -98,6 +113,7 @@ class Clock(object):
         self.repo = os.path.abspath(repo)
         self._is_git = None
         self._dirty = None
+        self._dirty_all = None
         self._log_cache = {}
         self._file_cache = {}
 
@@ -108,28 +124,52 @@ class Clock(object):
             self._is_git = bool(out) and out.strip() == "true"
         return self._is_git
 
-    def _dirty_paths(self):
+    def _dirty_paths(self, filtered=True):
+        """Paths with uncommitted changes.
+
+        filtered=True drops tool state and bookkeeping (what "the code changed"
+        means). file_time needs the unfiltered list: re-running a check edits an
+        existing evidence file, and that edit is newer than its commit.
+        """
         if self._dirty is None:
-            out = _run(self.repo, "status", "--porcelain")
-            paths = []
-            if out:
-                for line in out.splitlines():
-                    if len(line) < 4:
-                        continue
-                    path = line[3:]
-                    if " -> " in path:          # rename: take the new path
-                        path = path.split(" -> ", 1)[1]
-                    path = path.strip().strip('"').replace("\\", "/")
-                    if not _ignored_path(path):
-                        paths.append(path)
+            # -z: NUL-separated, no quoting; -uall: an untracked directory is
+            # otherwise collapsed to "dir/", which no file path can match.
+            out = _run(self.repo, "-c", "core.quotePath=false", "status",
+                       "--porcelain", "-z", "--untracked-files=all")
+            every, paths = [], []
+            fields = out.split("\0") if out else []
+            i = 0
+            while i < len(fields):
+                entry = fields[i]
+                i += 1
+                if len(entry) < 4:
+                    continue
+                status, path = entry[:2], entry[3:]
+                if "R" in status or "C" in status:
+                    i += 1          # the old path follows as its own field
+                path = path.replace("\\", "/")
+                every.append(path)
+                if not _ignored_path(path):
+                    paths.append(path)
+            self._dirty_all = every
             self._dirty = paths
-        return self._dirty
+        return (self._dirty or []) if filtered else (self._dirty_all or [])
+
+    def _mtime_of(self, rel):
+        try:
+            return os.path.getmtime(os.path.join(self.repo, rel))
+        except OSError:
+            return 0.0
+
+    def _changed_time(self, rel):
+        """When an uncommitted file actually changed: its mtime, not "now"."""
+        return self._mtime_of(rel) or time.time()
 
     def _log_time(self, pathspecs):
         key = tuple(pathspecs) if pathspecs else ()
         if key in self._log_cache:
             return self._log_cache[key]
-        args = ["log", "-1", "--format=%ct"]
+        args = ["log", "-1", "--format=%ct", "--full-history"]
         if pathspecs:
             args += ["--"] + list(pathspecs)
         else:
@@ -157,16 +197,23 @@ class Clock(object):
         dirty = self._dirty_paths()
         if patterns:
             rels = [os.path.relpath(f, self.repo).replace("\\", "/") for f in files]
+            newest = 0.0
             for d in dirty:
                 for rel in rels:
                     if rel == d or fnmatch.fnmatch(rel, d):
-                        return time.time()
-            if len(rels) > MAX_PATHSPECS:
-                return self._log_time(None)
+                        newest = max(newest, self._changed_time(rel))
+            if newest:
+                return newest
+            if len(rels) > MAX_PATHSPECS:       # keep the argv short, stay correct
+                best = 0.0
+                for i in range(0, len(rels), MAX_PATHSPECS):
+                    best = max(best, self._log_time(rels[i:i + MAX_PATHSPECS]))
+                return best
             return self._log_time(rels)
-        # whole repo: an uncommitted change anywhere counts as "now"
-        if dirty:
-            return time.time()
+        # whole repo: the newest uncommitted change, at its own mtime
+        newest = max((self._changed_time(d) for d in dirty), default=0.0)
+        if newest:
+            return newest
         return self._log_time(None)
 
     def for_requirement(self, req):
@@ -179,17 +226,25 @@ class Clock(object):
             return self._file_cache[rel]
         if not self.is_git():
             ts = self._mtime_of(rel)
-        elif any(rel == d or fnmatch.fnmatch(rel, d) for d in self._dirty_paths()):
-            ts = time.time()
+        elif any(rel == d or fnmatch.fnmatch(rel, d)
+                 for d in self._dirty_paths(filtered=False)):
+            ts = self._changed_time(rel)
         else:
             ts = self._log_time([rel])
-            if ts == 0.0:                     # untracked-but-clean is impossible; be safe
+            if ts == 0.0:                     # untracked: only mtime is available
                 ts = self._mtime_of(rel)
         self._file_cache[rel] = ts
         return ts
 
-    def _mtime_of(self, rel):
-        try:
-            return os.path.getmtime(os.path.join(self.repo, rel))
-        except OSError:
-            return 0.0
+
+def _run(repo, *args):
+    """Run git in repo; return stdout on exit 0, else None (never raises)."""
+    try:
+        proc = subprocess.run(["git", "-C", repo] + list(args),
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.decode("utf-8", "replace")

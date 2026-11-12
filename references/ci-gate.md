@@ -16,7 +16,7 @@ jobs:
           fetch-depth: 0        # freshness compares commit times; a shallow clone lies
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - run: pip install projtruth      # or: pip install git+https://github.com/<you>/projtruth
+      - run: pip install git+https://github.com/Libres-coder/projtruth
       - run: projtruth report --strict
 ```
 
@@ -51,6 +51,6 @@ every push: a WIP branch is legitimately full of `pending` requirements.
 
 | code | meaning |
 |---|---|
-| 0 | report printed, everything verified (`--strict` only changes this) |
-| 1 | `--strict` and at least one requirement is not verified; or a command failed |
+| 0 | report printed. Without `--strict` this says nothing about the statuses |
+| 1 | `--strict` and at least one requirement is not verified; also when the registry is empty, because an empty registry cannot be green |
 | 2 | usage error (argparse) |

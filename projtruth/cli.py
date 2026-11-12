@@ -4,7 +4,7 @@
   projtruth import-spec spec.md        import R<n> headings + 验收/Accept bullets
   projtruth req-list
   projtruth req-add R9 "title" "criterion" --files "src/api/*.py"
-  projtruth req-set R9 verified
+  projtruth req-set R9 implemented|pending
   projtruth req-scope R9 "server.py" "web/**"
   projtruth scan                       refresh the evidence index
   projtruth report [--json] [--strict]
@@ -44,6 +44,7 @@ def import_spec(repo, path):
     data = store.load(repo)
     by_id = {r["id"]: r for r in data["requirements"]}
     cur = None
+    crit_added = 0
     for line in lines:
         m = HEADING_RE.match(line.strip())
         if m:
@@ -52,10 +53,15 @@ def import_spec(repo, path):
         cm = CRIT_RE.match(line)
         if cm and cur and cur in by_id:
             crit = by_id[cur].setdefault("criteria", [])
+            text = cm.group(1).strip()
+            if any(c.get("text") == text for c in crit):
+                continue          # re-running import-spec must not duplicate criteria
             crit.append({"id": "%s.%d" % (cur, len(crit) + 1),
-                         "text": cm.group(1).strip(), "judge": "command"})
+                         "text": text, "judge": "command"})
+            crit_added += 1
     store.save(repo, data)
-    return True, "imported %d requirement(s) from %s" % (added, os.path.basename(path))
+    return True, "imported %d new requirement(s), %d new criterion/criteria from %s" % (
+        added, crit_added, os.path.basename(path))
 
 
 def _utf8_stdout():
@@ -144,6 +150,10 @@ def main(argv=None):
             _utf8_stdout()
             print(report.render(reqs, idx, clock))
         if args.strict:
+            if not reqs:
+                print("strict: no requirements registered - nothing to gate on",
+                      file=sys.stderr)
+                return 1
             bad = [r["id"] for r in reqs
                    if report.compute_status(r, idx, clock)[0] != "verified"]
             if bad:

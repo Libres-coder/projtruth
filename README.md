@@ -16,12 +16,12 @@ It answers three questions, for humans and for agents:
 ```
 $ projtruth report
 
-| requirement | status | criteria | evidence | scope | freshest evidence |
-|---|---|---|---|---|---|
-| R1 待办创建(API)      | **verified** | 1 | 1 | 1 pattern(s) | 2026-11-13 05:50 |
-| R2 待办列表(API)      | **verified** | 1 | 1 | 1 pattern(s) | 2026-11-13 05:50 |
-| R3 待办完成切换(API)  | **stale**    | 1 | 1 | 1 pattern(s) | 2026-11-13 05:50 |
-| R4 前端界面           | **verified** | 1 | 1 | 2 pattern(s) | 2026-11-13 06:54 |
+| requirement | status | criteria | evidence | tier | scope | freshest evidence |
+|---|---|---|---|---|---|---|
+| R1 待办创建(API)      | **verified** | 1 | 1 | measured | 1 pattern(s) | 2026-11-13 05:50 |
+| R2 待办列表(API)      | **verified** | 1 | 1 | measured | 1 pattern(s) | 2026-11-13 05:50 |
+| R3 待办完成切换(API)  | **stale**    | 1 | 1 | measured | 1 pattern(s) | 2026-11-13 05:50 |
+| R4 前端界面           | **verified** | 1 | 1 | measured | 2 pattern(s) | 2026-11-13 06:54 |
 
 ## Needs attention (1 of 4)
 - R3 (stale, re-verify): code changed 12m ago, after evidence 2026-11-13 05:50
@@ -38,6 +38,9 @@ Zero dependencies, Python 3.8+.
 ```bash
 pip install git+https://github.com/Libres-coder/projtruth
 ```
+
+(Not on PyPI yet - install from the repository, or run `python -m projtruth`
+from a checkout.)
 
 As an MCP server (Claude Code, Cursor, any MCP client):
 
@@ -94,6 +97,9 @@ The body should contain the real output and a tier word - `measured`,
 | `implemented` | declared done, no evidence yet |
 | `pending` | not started |
 
+Only `pending` and `implemented` can be declared; `verified`, `stale` and
+`unverified` are computed from evidence.
+
 Details: [references/status-model.md](references/status-model.md).
 
 ## Freshness without the mtime lies
@@ -104,9 +110,11 @@ opposite of the truth. When the repo is a git work tree, `projtruth` uses the
 newest commit that touched the requirement's files, and treats any uncommitted
 edit to them as "changed now". Non-git repos fall back to mtime.
 
-`PROGRESS.md`, `README*`, `CHANGELOG*`, `LICENSE*`, `.claude/`, `.projtruth/`
-and evidence files never count as source changes - `projtruth init` alone must
-not turn a green repo red.
+`.projtruth/`, `.claude/`, `.git/`, `.idea/`, `graphify-out/`, `PROGRESS.md`,
+`README*`, `CHANGELOG*`, `CONTRIBUTING*`, `LICENSE*` and `*.lock` never count as
+source changes - `projtruth init` alone must not turn a green repo red. A file
+with uncommitted changes counts at its own mtime, not "now", so a fresh re-run
+of a check is still newer than the edit it answers.
 
 ## Scope: precision beats a repo-wide red
 
@@ -127,7 +135,7 @@ verified.
 | `status_report` | the truth table - call first when asked what is done |
 | `req_list` | requirements, criteria count, declared status, scope |
 | `req_add` | register a requirement with criteria and file scope |
-| `req_set_status` | declared status (evidence still outranks it) |
+| `req_set_status` | declare `pending` / `implemented` (`verified` is refused) |
 | `req_scope` | restrict staleness to file globs |
 | `evidence_scan` | re-index evidence by criterion id |
 | `decide` / `decisions_list` | append-only decision log |
@@ -163,6 +171,8 @@ See [references/ci-gate.md](references/ci-gate.md) for a GitHub Actions job
 
 - `import-spec` is a heuristic over headings and bullet prefixes - check its output.
 - Evidence links by filename prefix; `R3-x.md` feeds every `R3.n` criterion.
+- A scope glob that matches nothing means "never stale" - a typo fails silently.
+- Inside a git submodule, edits are invisible to the superproject's history.
 - Unscoped requirements go stale on any source change (by design).
 - Only registered requirements are tracked; undocumented work is invisible.
 - It does not run anything. It reports what was recorded, and when.

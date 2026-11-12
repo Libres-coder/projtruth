@@ -21,28 +21,30 @@ STATUS_NOTE = {
 
 
 def _req_evidence(req, index):
-    """Evidence for a requirement: match criterion ids first (R1.1), then the
-    requirement id itself (R1) - files are commonly named r1-<slug>.md."""
+    """Evidence for a requirement: its own criterion ids (R1.1) plus the
+    requirement id itself (R1) - files are commonly named r1-<slug>.md, and a
+    requirement without criteria still owns whatever is named after it."""
     rid = req.get("id", "").upper()
     seen = {}
-    for c in req.get("criteria", []):
-        cid = c.get("id", "").upper()
-        for key in (cid, rid):
-            for e in index.get(key, []):
-                seen[e["file"]] = e
+    keys = [c.get("id", "").upper() for c in req.get("criteria", [])] + [rid]
+    for key in keys:
+        for e in index.get(key, []):
+            seen[e["file"]] = e
     return sorted(seen.values(), key=lambda e: e["mtime"])
 
 
 def _times(req, evidences, clock):
-    """(newest_evidence_time, newest_evidence_file, newest_source_time)."""
+    """(newest_evidence_time, newest_evidence, newest_source_time)."""
     if hasattr(clock, "file_time"):          # freshness.Clock
-        stamped = [(clock.file_time(e["file"]), e["file"]) for e in evidences]
+        stamped = [(clock.file_time(e["file"]), e) for e in evidences]
         src = clock.for_requirement(req)
     else:                                     # float: global source time, raw mtimes
-        stamped = [(e["mtime"], e["file"]) for e in evidences]
+        stamped = [(e["mtime"], e) for e in evidences]
         src = float(clock or 0.0)
-    newest_ev, newest_file = max(stamped) if stamped else (0.0, "")
-    return newest_ev, newest_file, src
+    if not stamped:
+        return 0.0, {}, src
+    ts, ev = max(stamped, key=lambda t: (t[0], t[1]["file"]))
+    return ts, ev, src
 
 
 def compute_status(req, index, clock):
@@ -52,10 +54,10 @@ def compute_status(req, index, clock):
         declared = req.get("status", "pending")
         return (declared if declared in ("pending", "implemented") else "unverified",
                 "no evidence")
-    newest_ev, newest_file, src = _times(req, evidences, clock)
+    newest_ev, ev, src = _times(req, evidences, clock)
     if src > newest_ev + 1:
         return ("stale", "code changed %s, after evidence %s (%s)"
-                % (_ago(src), _stamp(newest_ev), newest_file))
+                % (_ago(src), _stamp(newest_ev), ev.get("file", "?")))
     scope = "%d file pattern(s)" % len(req["files"]) if req.get("files") else "whole repo"
     return ("verified", "evidence newer than %s" % scope)
 
@@ -81,16 +83,18 @@ def render(requirements, index, clock):
         lines.append("No requirements registered yet. "
                      "Run `projtruth import-spec spec.md` or add one with req_add.")
         return "\n".join(lines)
-    lines.append("| requirement | status | criteria | evidence | scope | freshest evidence |")
-    lines.append("|---|---|---|---|---|---|")
+    lines.append("| requirement | status | criteria | evidence | tier | scope "
+                 "| freshest evidence |")
+    lines.append("|---|---|---|---|---|---|---|")
     for req in requirements:
         status, _ = compute_status(req, index, clock)
         evs = _req_evidence(req, index)
-        freshest, _, _ = _times(req, evs, clock) if evs else (0.0, "", 0.0)
+        freshest, ev, _ = _times(req, evs, clock) if evs else (0.0, {}, 0.0)
         scope = "%d pattern(s)" % len(req["files"]) if req.get("files") else "repo"
-        lines.append("| %s %s | **%s** | %d | %d | %s | %s |"
+        lines.append("| %s %s | **%s** | %d | %d | %s | %s | %s |"
                      % (req.get("id", "?"), req.get("title", ""), status,
-                        len(req.get("criteria", [])), len(evs), scope,
+                        len(req.get("criteria", [])), len(evs),
+                        ev.get("tier", "-"), scope,
                         _stamp(freshest) if evs else "-"))
     lines.append("")
     attention = []

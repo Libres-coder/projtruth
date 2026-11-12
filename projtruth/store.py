@@ -10,12 +10,15 @@ Nothing here is derived. Deleting .projtruth loses the promises, not the code.
 import json
 import os
 import re
+import tempfile
 import time
 
 STATE_DIR = ".projtruth"
 SCHEMA_VERSION = 1
 
 VALID_STATUS = ("pending", "implemented", "verified", "stale", "unverified")
+# verified/stale are computed from evidence; only these three can be declared.
+DECLARABLE_STATUS = ("pending", "implemented")
 REQ_ID_RE = re.compile(r"^R\d+$")
 
 
@@ -42,27 +45,71 @@ def init(repo):
 
 
 def load(repo):
+    """Read the registry. A damaged file is moved aside, never silently lost."""
     try:
         with open(_req_path(repo), encoding="utf-8") as f:
             data = json.load(f)
-    except Exception:
+    except FileNotFoundError:
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
-    if not isinstance(data, dict):
+    except (ValueError, UnicodeDecodeError, OSError):
+        _quarantine(repo)
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
+    if not isinstance(data, dict) or not isinstance(data.get("requirements", []), list):
+        _quarantine(repo)
+        return {"schema_version": SCHEMA_VERSION, "requirements": []}
+    data.setdefault("schema_version", SCHEMA_VERSION)
     data.setdefault("requirements", [])
     return data
 
 
+def _quarantine(repo):
+    """Keep a damaged registry for inspection instead of overwriting it."""
+    path = _req_path(repo)
+    if not os.path.exists(path):
+        return
+    try:
+        os.replace(path, path + ".corrupt-%s" % time.strftime("%Y%m%d-%H%M%S"))
+    except OSError:
+        pass
+
+
+def _as_list(value):
+    """A single string is one item, not a sequence of characters."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return list(value)
+
+
+def _unsafe_files(files):
+    bad = []
+    for f in files or []:
+        p = str(f).replace("\\", "/")
+        if os.path.isabs(p) or p.startswith("/") or ".." in p.split("/"):
+            bad.append(f)
+    return bad
+
+
 def save(repo, data):
+    """Write atomically: a unique temp file in the same directory, then rename."""
     os.makedirs(state_dir(repo), exist_ok=True)
-    tmp = _req_path(repo) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, _req_path(repo))
+    fd, tmp = tempfile.mkstemp(prefix=".requirements-", suffix=".tmp",
+                               dir=state_dir(repo))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, _req_path(repo))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _norm_id(req_id):
-    return (req_id or "").strip().upper()
+    return str(req_id or "").strip().upper()
 
 
 def add_requirement(repo, req_id, title, criteria=None, files=None):
@@ -75,6 +122,11 @@ def add_requirement(repo, req_id, title, criteria=None, files=None):
     req_id = _norm_id(req_id)
     if not REQ_ID_RE.match(req_id):
         return False, "invalid requirement id %r (expected R1, R2, ...)" % req_id
+    files = _as_list(files)
+    criteria = _as_list(criteria)
+    bad = _unsafe_files(files)
+    if bad:
+        return False, "file patterns must stay inside the repo: %s" % ", ".join(map(str, bad))
     data = load(repo)
     for r in data["requirements"]:
         if r.get("id") == req_id:
@@ -96,8 +148,11 @@ def add_requirement(repo, req_id, title, criteria=None, files=None):
 
 
 def set_status(repo, req_id, status):
+    if status in VALID_STATUS and status not in DECLARABLE_STATUS:
+        return False, ("%s is computed from evidence, not declared - write an "
+                       "evidence file for this requirement instead" % status)
     if status not in VALID_STATUS:
-        return False, "invalid status: %s (valid: %s)" % (status, ", ".join(VALID_STATUS))
+        return False, "invalid status: %s (valid: %s)" % (status, ", ".join(DECLARABLE_STATUS))
     req_id = _norm_id(req_id)
     data = load(repo)
     for r in data["requirements"]:
@@ -109,6 +164,10 @@ def set_status(repo, req_id, status):
 
 
 def set_files(repo, req_id, files):
+    files = _as_list(files)
+    bad = _unsafe_files(files)
+    if bad:
+        return False, "file patterns must stay inside the repo: %s" % ", ".join(map(str, bad))
     req_id = _norm_id(req_id)
     data = load(repo)
     for r in data["requirements"]:

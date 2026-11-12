@@ -13,12 +13,12 @@
 ```
 $ projtruth report
 
-| requirement | status | criteria | evidence | scope | freshest evidence |
-|---|---|---|---|---|---|
-| R1 待办创建(API)      | **verified** | 1 | 1 | 1 pattern(s) | 2026-11-13 05:50 |
-| R2 待办列表(API)      | **verified** | 1 | 1 | 1 pattern(s) | 2026-11-13 05:50 |
-| R3 待办完成切换(API)  | **stale**    | 1 | 1 | 1 pattern(s) | 2026-11-13 05:50 |
-| R4 前端界面           | **verified** | 1 | 1 | 2 pattern(s) | 2026-11-13 06:54 |
+| requirement | status | criteria | evidence | tier | scope | freshest evidence |
+|---|---|---|---|---|---|---|
+| R1 待办创建(API)      | **verified** | 1 | 1 | measured | 1 pattern(s) | 2026-11-13 05:50 |
+| R2 待办列表(API)      | **verified** | 1 | 1 | measured | 1 pattern(s) | 2026-11-13 05:50 |
+| R3 待办完成切换(API)  | **stale**    | 1 | 1 | measured | 1 pattern(s) | 2026-11-13 05:50 |
+| R4 前端界面           | **verified** | 1 | 1 | measured | 2 pattern(s) | 2026-11-13 06:54 |
 ```
 
 状态是**算出来的，不是声明的**。只有证据存在、且它覆盖的代码在那之后没变，需求才是 `verified`；没有证据却声明 `verified`，报告里显示 `unverified`。
@@ -30,6 +30,8 @@ $ projtruth report
 ```bash
 pip install git+https://github.com/Libres-coder/projtruth
 ```
+
+（尚未发布到 PyPI，请从仓库安装；或者克隆后直接在仓库里跑 `python -m projtruth`。）
 
 作为 MCP 服务器（Claude Code、Cursor 或任何 MCP 客户端）：
 
@@ -46,7 +48,7 @@ claude mcp add projtruth -- python -m projtruth.mcp_server
 git clone https://github.com/Libres-coder/projtruth ~/.claude/skills/projtruth
 ```
 
-## 三步接入
+## 接入
 
 ```bash
 cd 你的项目
@@ -80,8 +82,10 @@ projtruth req-add R5 "登录限流" "一分钟内第 6 次尝试返回 429" --fi
 | `verified` | 有证据，且证据比它覆盖的代码新 |
 | `stale` | 有证据，但代码在那之后改过——需要重新验证 |
 | `unverified` | 声称完成，但没有东西支撑 |
-| `implemented` | 声称完成，尚无缝证据 |
+| `implemented` | 已声明完成，尚无证据 |
 | `pending` | 还没开始 |
+
+只有 `pending` 和 `implemented` 可以手动声明；`verified`、`stale`、`unverified` 都由证据算出来。
 
 细节：[references/status-model.md](references/status-model.md)。
 
@@ -89,7 +93,7 @@ projtruth req-add R5 "登录限流" "一分钟内第 6 次尝试返回 429" --fi
 
 `git clone` 和 `git checkout` 会重写所有文件的时间戳，只看 mtime 的工具在全新 checkout 上会报"所有代码刚刚都改过"——和事实正好相反。当仓库是 git 工作区时，`projtruth` 用的是**最后一次改到该需求文件的提交时间**，并且把"这些文件有未提交修改"直接当作"刚刚改过"；非 git 仓库才退回 mtime。
 
-`PROGRESS.md`、`README*`、`CHANGELOG*`、`LICENSE*`、`.claude/`、`.projtruth/` 以及证据文件本身都不算源码变更——否则光是 `projtruth init` 就能把整个项目刷成红色。
+`.projtruth/`、`.claude/`、`.git/`、`.idea/`、`graphify-out/`、`PROGRESS.md`、`README*`、`CHANGELOG*`、`CONTRIBUTING*`、`LICENSE*`、`*.lock` 都不算源码变更——否则光是 `projtruth init` 就能把整个项目刷成红色。有未提交修改的文件按**它自己的 mtime** 计算，而不是"现在"，所以改完代码立刻重跑一次证据，仍然是新证据。
 
 ## 作用域：精确胜过全仓库飘红
 
@@ -108,7 +112,7 @@ projtruth req-scope R1 server.py "web/api/**/*.js"
 | `status_report` | 真相表——被问"做完没有"时先调它 |
 | `req_list` | 需求列表、标准数、声明状态、作用域 |
 | `req_add` | 登记需求、验收标准与文件作用域 |
-| `req_set_status` | 声明状态（证据仍然优先） |
+| `req_set_status` | 声明 `pending` / `implemented`（`verified` 会被拒绝） |
 | `req_scope` | 用文件通配符限定 staleness 范围 |
 | `evidence_scan` | 按标准 id 重建证据索引 |
 | `decide` / `decisions_list` | 只追加的决策台账 |
@@ -139,6 +143,8 @@ GitHub Actions 示例见 [references/ci-gate.md](references/ci-gate.md)（记得
 
 - `import-spec` 是按标题与列表前缀的启发式解析，请核对导入结果。
 - 证据按文件名前缀关联；`R3-x.md` 会喂给 R3 的每一个标准。
+- 作用域通配符如果什么都没匹配到，等于"永不 stale"——写错一个字符不会报错。
+- 在 git 子模块里改动，父仓库的历史看不到。
 - 没有作用域的需求，任何源码改动都会 stale（这是设计）。
 - 只追踪已登记的需求；没写下来的工作它看不见。
 - 它不执行任何东西，只报告被记录了什么、以及何时记录的。

@@ -51,9 +51,9 @@ TOOLS = [
     },
     {
         "name": "req_set_status",
-        "description": ("Declare a requirement's status (pending|implemented|verified|stale|"
-                        "unverified). Note: evidence outranks declarations - a declared "
-                        "'verified' without an evidence file still reports as unverified."),
+        "description": ("Declare a requirement's status: pending or implemented. verified, stale "
+                        "and unverified are computed from evidence and are rejected here - "
+                        "write an evidence file instead."),
         "inputSchema": {"type": "object",
                         "properties": {"id": {"type": "string"},
                                        "status": {"type": "string"}},
@@ -157,10 +157,16 @@ def call_tool(name, args):
 
 def handle(msg):
     """Return a response dict for a request message, or None for notifications."""
+    if not isinstance(msg, dict):
+        return {"jsonrpc": "2.0", "id": None,
+                "error": {"code": -32600, "message": "invalid request: expected an object"}}
     method = msg.get("method", "")
     mid = msg.get("id")
     if mid is None:
         return None  # notification
+    if not isinstance(method, str):
+        return {"jsonrpc": "2.0", "id": mid,
+                "error": {"code": -32600, "message": "invalid request: method must be a string"}}
     if method == "initialize":
         return {"jsonrpc": "2.0", "id": mid,
                 "result": {"protocolVersion": PROTOCOL,
@@ -171,9 +177,13 @@ def handle(msg):
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": mid, "result": {"tools": TOOLS}}
     if method == "tools/call":
-        params = msg.get("params") or {}
+        params = msg.get("params")
+        if not isinstance(params, dict):
+            params = {}
         name = params.get("name")
-        args = params.get("arguments") or {}
+        args = params.get("arguments")
+        if not isinstance(args, dict):
+            args = {}
         try:
             text = call_tool(name, args)
             return {"jsonrpc": "2.0", "id": mid,
@@ -205,7 +215,12 @@ def main():
             resp = {"jsonrpc": "2.0", "id": None,
                     "error": {"code": -32700, "message": "parse error"}}
         else:
-            resp = handle(msg)
+            try:
+                resp = handle(msg)
+            except Exception as e:          # one bad message must not kill the server
+                rid = msg.get("id") if isinstance(msg, dict) else None
+                resp = {"jsonrpc": "2.0", "id": rid,
+                        "error": {"code": -32603, "message": "internal error: %s" % e}}
         if resp is not None:
             sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
             sys.stdout.flush()

@@ -46,13 +46,14 @@ def scan(repo):
         try:
             with open(f, "r", encoding="utf-8-sig", errors="replace") as fh:
                 body = fh.read()
+            mtime = os.path.getmtime(f)
         except OSError:
-            continue
+            continue          # deleted between the glob and the read
         tier_m = TIER_RE.search(body)
         index.setdefault(crit, []).append({
             "file": os.path.relpath(f, repo).replace("\\", "/"),
             "tier": (tier_m.group(0).lower() if tier_m else "none"),
-            "mtime": os.path.getmtime(f),
+            "mtime": mtime,
         })
     for crit in index:
         index[crit].sort(key=lambda e: e["mtime"])

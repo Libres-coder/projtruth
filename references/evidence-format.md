@@ -46,8 +46,9 @@ Rules that matter:
 - Put the **actual output** in a fenced block. A sentence saying "it works" is
   not evidence.
 - Include the tier word - `measured`, `inferred` or `guessed` - somewhere in the
-  body. `projtruth` reads it and reports it per criterion; verify-first's gate
-  rejects evidence without one.
+  body. `report` shows the tier of the freshest evidence per requirement,
+  `evidence_scan` lists it per criterion, and verify-first's gate rejects
+  evidence without one.
   - `measured` - a real run, real output, pasted.
   - `inferred` - read from code or a log, not executed.
   - `guessed` - an assumption with no run behind it.
@@ -61,7 +62,7 @@ Rules that matter:
 |---|---|
 | `R3-ok.md` containing "tested, works" | nothing to re-check; will be trusted until it is wrong |
 | evidence written before running the check | the file exists, the claim does not |
-| editing the evidence file to bump its date | git commit time is what is compared, not the file's timestamp |
+| editing the evidence file to bump its date | commit time is compared for tracked files; an uncommitted edit counts at its mtime, so commit the re-run |
 | one giant `R1-R9.md` | links to nothing specific; every criterion inherits it |
 
 ## Refreshing

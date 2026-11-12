@@ -39,8 +39,11 @@ class StoreTests(unittest.TestCase):
             req = store.list_requirements(tmp)[0]
             self.assertEqual([c["id"] for c in req["criteria"]], ["R1.1", "R1.2"])
             self.assertEqual(req["files"], [])
-            self.assertTrue(store.set_status(tmp, "R1", "verified")[0])
+            self.assertTrue(store.set_status(tmp, "R1", "implemented")[0])
             self.assertFalse(store.set_status(tmp, "R1", "bogus")[0])
+            ok, msg = store.set_status(tmp, "R1", "verified")
+            self.assertFalse(ok, "verified is computed from evidence, not declared")
+            self.assertIn("evidence", msg)
             self.assertTrue(store.set_files(tmp, "R1", ["a.py"])[0])
             self.assertEqual(store.list_requirements(tmp)[0]["files"], ["a.py"])
             store.append_decision(tmp, "use memory store", "R4 only needs refresh persistence")
@@ -64,6 +67,40 @@ class StoreTests(unittest.TestCase):
             self.assertFalse(os.path.exists(
                 os.path.join(tmp, ".projtruth", "requirements.json.tmp")))
             self.assertEqual(len(store.load(tmp)["requirements"]), 1)
+            leftovers = [f for f in os.listdir(os.path.join(tmp, ".projtruth"))
+                         if f.endswith(".tmp")]
+            self.assertEqual(leftovers, [], "temp file must be renamed, not left behind")
+
+    def test_single_strings_are_not_split_into_characters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            self.assertTrue(store.add_requirement(tmp, "R3", "t", "only criterion",
+                                                  files="a.py")[0])
+            req = store.list_requirements(tmp)[0]
+            self.assertEqual([c["text"] for c in req["criteria"]], ["only criterion"])
+            self.assertEqual(req["files"], ["a.py"])
+
+    def test_unsafe_file_patterns_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            ok, msg = store.add_requirement(tmp, "R1", "t", ["c"], files=["../secret.py"])
+            self.assertFalse(ok)
+            self.assertIn("inside the repo", msg)
+            store.add_requirement(tmp, "R2", "t", ["c"])
+            self.assertFalse(store.set_files(tmp, "R2", ["C:/Windows/system32/x.dll"])[0])
+            self.assertFalse(store.set_files(tmp, "R2", ["/etc/passwd"])[0])
+
+    def test_corrupt_registry_is_quarantined_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            path = os.path.join(tmp, ".projtruth", "requirements.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("{ this is not json")
+            self.assertEqual(store.list_requirements(tmp), [])
+            leftovers = [f for f in os.listdir(os.path.join(tmp, ".projtruth"))
+                         if ".corrupt-" in f]
+            self.assertEqual(len(leftovers), 1, "damaged registry must be kept")
+            self.assertTrue(store.add_requirement(tmp, "R1", "t", ["c"])[0])
 
 
 class ImportTests(unittest.TestCase):
@@ -76,6 +113,17 @@ class ImportTests(unittest.TestCase):
             self.assertEqual([r["id"] for r in reqs], ["R1", "R2"])
             self.assertEqual(len(reqs[0]["criteria"]), 2)
             self.assertEqual(reqs[0]["criteria"][1]["text"], "add twice works")
+
+    def test_import_spec_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mk(os.path.join(tmp, "spec.md"), SPEC)
+            cli.import_spec(tmp, os.path.join(tmp, "spec.md"))
+            cli.import_spec(tmp, os.path.join(tmp, "spec.md"))
+            reqs = store.list_requirements(tmp)
+            self.assertEqual([r["id"] for r in reqs], ["R1", "R2"])
+            self.assertEqual(len(reqs[0]["criteria"]), 2,
+                             "re-import must not duplicate criteria")
+            self.assertEqual([c["id"] for c in reqs[0]["criteria"]], ["R1.1", "R1.2"])
 
     def test_import_missing_file_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -178,6 +226,32 @@ class ReportTests(unittest.TestCase):
             store.init(tmp)
             out = report.render([], {}, freshness.Clock(tmp))
             self.assertIn("No requirements registered", out)
+            self.assertEqual(cli.main(["--repo", tmp, "report", "--strict"]), 1,
+                             "an empty registry must not pass the gate vacuously")
+
+    def test_requirement_without_criteria_still_links_its_own_evidence(self):
+        """Regression: _req_evidence used to iterate criteria only, so a
+        criteria-less R5 with R5-ok.md was stuck at pending forever."""
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            store.add_requirement(tmp, "R5", "no criteria")
+            mk(os.path.join(tmp, ".projtruth", "evidence", "R5-ok.md"),
+               "```\nok\n```\nmeasured\n")
+            idx = evidence.scan(tmp)
+            status, _ = report.compute_status(
+                store.list_requirements(tmp)[0], idx, freshness.Clock(tmp))
+            self.assertEqual(status, "verified")
+
+    def test_table_reports_evidence_tier(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            store.add_requirement(tmp, "R1", "t", ["c"])
+            mk(os.path.join(tmp, ".projtruth", "evidence", "R1-ok.md"),
+               "```\nok\n```\ninferred\n")
+            out = report.render(store.list_requirements(tmp), evidence.scan(tmp),
+                                freshness.Clock(tmp))
+            self.assertIn("| tier |", out)
+            self.assertIn("inferred", out)
 
     def test_report_exit_strict(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,15 +303,20 @@ class GitFreshnessTests(unittest.TestCase):
         self._git("commit", "-m", msg, date=date)
 
     def test_commit_times_beat_reset_mtimes(self):
-        """Checkout resets every mtime; git still knows the evidence is newer."""
+        """Checkout resets every mtime; git still knows the evidence is newer.
+
+        The mtimes are set deliberately *against* the answer - source newer than
+        evidence - so only commit-time logic can produce `verified`. A tool that
+        compared mtimes would call this stale.
+        """
         mk(os.path.join(self.repo, "app.py"), "v1\n")
         self._commit("source", "2026-01-01T00:00:00+0000")
         mk(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"), "measured\n")
         self._commit("evidence", "2026-01-02T00:00:00+0000")
-        # simulate git checkout: everything looks touched just now
         now = time.time()
-        os.utime(os.path.join(self.repo, "app.py"), (now, now))
-        os.utime(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"), (now, now))
+        os.utime(os.path.join(self.repo, "app.py"), (now, now))                  # newer
+        os.utime(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"),
+                 (now - 3600, now - 3600))                                       # older
         store.init(self.repo)
         store.add_requirement(self.repo, "R1", "t", ["c"], files=["app.py"])
         idx = evidence.scan(self.repo)
@@ -290,6 +369,88 @@ class GitFreshnessTests(unittest.TestCase):
         clock = freshness.Clock(self.repo)
         self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
                                                idx, clock)[0], "verified")
+
+    def test_refreshing_evidence_in_place_beats_its_old_commit(self):
+        """Re-running a check edits the evidence file. That edit is newer than
+        the code change it answers, even before either is committed."""
+        mk(os.path.join(self.repo, "app.py"), "v1\n")
+        self._commit("source", "2026-01-01T00:00:00+0000")
+        ev = os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md")
+        mk(ev, "measured\nold run\n")
+        self._commit("evidence", "2026-01-02T00:00:00+0000")
+        store.init(self.repo)
+        store.add_requirement(self.repo, "R1", "t", ["c"], files=["app.py"])
+        mk(os.path.join(self.repo, "app.py"), "v2\n")     # code changed, uncommitted
+        mk(ev, "measured\nnew run\n")                     # evidence re-run, uncommitted
+        idx = evidence.scan(self.repo)
+        clock = freshness.Clock(self.repo)
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, clock)[0], "verified")
+
+    def test_untracked_directory_of_new_source_files_counts(self):
+        mk(os.path.join(self.repo, "app.py"), "v1\n")
+        self._commit("source", "2026-01-01T00:00:00+0000")
+        mk(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"), "measured\n")
+        self._commit("evidence", "2026-01-02T00:00:00+0000")
+        store.init(self.repo)
+        store.add_requirement(self.repo, "R1", "t", ["c"], files=["web/**/*.js"])
+        mk(os.path.join(self.repo, "web", "app.js"), "x\n")   # whole dir untracked
+        idx = evidence.scan(self.repo)
+        clock = freshness.Clock(self.repo)
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, clock)[0], "stale")
+
+    def test_uncommitted_edit_older_than_evidence_is_fresh(self):
+        """An edit at 10:00 and evidence written at 10:05: the evidence answers
+        the edit. Returning 'now' for any dirty file would call this stale."""
+        mk(os.path.join(self.repo, "app.py"), "v1\n")
+        self._commit("source", "2026-01-01T00:00:00+0000")
+        mk(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"), "measured\n")
+        self._commit("evidence", "2026-01-02T00:00:00+0000")
+        store.init(self.repo)
+        store.add_requirement(self.repo, "R1", "t", ["c"], files=["app.py"])
+        mk(os.path.join(self.repo, "app.py"), "v2\n")           # dirty edit...
+        mid = time.mktime(time.strptime("2026-01-01 12:00:00", "%Y-%m-%d %H:%M:%S"))
+        os.utime(os.path.join(self.repo, "app.py"), (mid, mid))  # ...from before it
+        idx = evidence.scan(self.repo)
+        clock = freshness.Clock(self.repo)
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, clock)[0], "verified")
+
+    def test_cjk_filename_dirty_is_seen(self):
+        """git quotes non-ASCII paths by default; unquoted (-z) matching is what
+        makes a Chinese filename work - and our users have Chinese filenames."""
+        mk(os.path.join(self.repo, "中文.py"), "v1\n")
+        self._commit("source", "2026-01-01T00:00:00+0000")
+        mk(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"), "measured\n")
+        self._commit("evidence", "2026-01-02T00:00:00+0000")
+        store.init(self.repo)
+        store.add_requirement(self.repo, "R1", "t", ["c"], files=["中文.py"])
+        idx = evidence.scan(self.repo)
+        clock = freshness.Clock(self.repo)
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, clock)[0], "verified")
+        mk(os.path.join(self.repo, "中文.py"), "v2\n")
+        clock = freshness.Clock(self.repo)
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, clock)[0], "stale")
+
+    def test_directory_scope_covers_the_subtree(self):
+        """`files: ["src"]` must mean src/**, not 'matches nothing, never stale'."""
+        mk(os.path.join(self.repo, "src", "app.js"), "v1\n")
+        self._commit("source", "2026-01-01T00:00:00+0000")
+        mk(os.path.join(self.repo, ".projtruth", "evidence", "R1-ok.md"), "measured\n")
+        self._commit("evidence", "2026-01-02T00:00:00+0000")
+        store.init(self.repo)
+        store.add_requirement(self.repo, "R1", "t", ["c"], files=["src"])
+        idx = evidence.scan(self.repo)
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, freshness.Clock(self.repo))[0],
+                         "verified")
+        mk(os.path.join(self.repo, "src", "app.js"), "v2\n")
+        self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
+                                               idx, freshness.Clock(self.repo))[0],
+                         "stale")
 
     def test_bookkeeping_commit_is_not_a_source_change(self):
         mk(os.path.join(self.repo, "app.py"), "v1\n")
