@@ -12,8 +12,8 @@
   projtruth decisions
 
 Exit codes: 0 ok, 1 gate/command failure, 2 usage.
-`report --strict` exits 1 when any requirement is not verified - usable as a CI
-gate or a pre-release check.
+`report --strict` exits 1 when any requirement is not verified, and when the
+registry is empty - usable as a CI gate or a pre-release check.
 """
 import argparse
 import json
@@ -93,7 +93,7 @@ def main(argv=None):
     p = sub.add_parser("report")
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true",
-                   help="exit 1 unless every requirement is verified")
+                   help="exit 1 unless every requirement is verified (empty registry fails too)")
     p = sub.add_parser("decide"); p.add_argument("decision"); p.add_argument("--why", default="")
     sub.add_parser("decisions")
 

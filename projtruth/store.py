@@ -17,7 +17,7 @@ STATE_DIR = ".projtruth"
 SCHEMA_VERSION = 1
 
 VALID_STATUS = ("pending", "implemented", "verified", "stale", "unverified")
-# verified/stale are computed from evidence; only these three can be declared.
+# verified/stale/unverified are computed from evidence; only these two are declarable.
 DECLARABLE_STATUS = ("pending", "implemented")
 REQ_ID_RE = re.compile(r"^R\d+$")
 
@@ -51,10 +51,13 @@ def load(repo):
             data = json.load(f)
     except FileNotFoundError:
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
-    except (ValueError, UnicodeDecodeError, OSError):
+    except OSError:
+        # sharing violation, permissions... not proof the file is damaged
+        return {"schema_version": SCHEMA_VERSION, "requirements": []}
+    except (ValueError, UnicodeDecodeError):
         _quarantine(repo)
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
-    if not isinstance(data, dict) or not isinstance(data.get("requirements", []), list):
+    if not _valid_registry(data):
         _quarantine(repo)
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
     data.setdefault("schema_version", SCHEMA_VERSION)
@@ -62,31 +65,64 @@ def load(repo):
     return data
 
 
+def _valid_registry(data):
+    """Shape check deep enough that the report can never crash on it."""
+    if not isinstance(data, dict):
+        return False
+    reqs = data.get("requirements", [])
+    if not isinstance(reqs, list):
+        return False
+    for r in reqs:
+        if not isinstance(r, dict) or not isinstance(r.get("id"), str):
+            return False
+        if not isinstance(r.get("criteria", []), list):
+            return False
+        for c in r.get("criteria", []):
+            if not isinstance(c, dict) or not isinstance(c.get("id"), str):
+                return False
+    return True
+
+
 def _quarantine(repo):
-    """Keep a damaged registry for inspection instead of overwriting it."""
+    """Keep a damaged registry for inspection instead of overwriting it.
+
+    Unique suffix: two corruptions must not overwrite the first backup, and a
+    concurrent writer's fresh file must not be silently replaced.
+    """
     path = _req_path(repo)
     if not os.path.exists(path):
         return
+    suffix = ".corrupt-%s-%d" % (time.strftime("%Y%m%d-%H%M%S"), os.getpid())
     try:
-        os.replace(path, path + ".corrupt-%s" % time.strftime("%Y%m%d-%H%M%S"))
+        target = path + suffix
+        n = 1
+        while os.path.exists(target):
+            target = path + suffix + "-%d" % n
+            n += 1
+        os.replace(path, target)
     except OSError:
         pass
 
 
-def _as_list(value):
-    """A single string is one item, not a sequence of characters."""
+def _as_list(value, what="value"):
+    """A single string is one item, not a sequence of characters; a dict is a
+    mistake ({"text": ...} must not become the criteria "text" and "judge")."""
     if value is None:
         return []
     if isinstance(value, str):
         return [value]
-    return list(value)
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    raise ValueError("expected a string or a list of strings for %s, got %s"
+                     % (what, type(value).__name__))
 
 
 def _unsafe_files(files):
     bad = []
     for f in files or []:
         p = str(f).replace("\\", "/")
-        if os.path.isabs(p) or p.startswith("/") or ".." in p.split("/"):
+        if (os.path.isabs(p) or p.startswith("/") or re.match(r"^[A-Za-z]:[\/]", p)
+                or ".." in p.split("/")):
             bad.append(f)
     return bad
 
@@ -122,8 +158,11 @@ def add_requirement(repo, req_id, title, criteria=None, files=None):
     req_id = _norm_id(req_id)
     if not REQ_ID_RE.match(req_id):
         return False, "invalid requirement id %r (expected R1, R2, ...)" % req_id
-    files = _as_list(files)
-    criteria = _as_list(criteria)
+    try:
+        files = _as_list(files, "files")
+        criteria = _as_list(criteria, "criteria")
+    except ValueError as e:
+        return False, str(e)
     bad = _unsafe_files(files)
     if bad:
         return False, "file patterns must stay inside the repo: %s" % ", ".join(map(str, bad))
@@ -164,7 +203,10 @@ def set_status(repo, req_id, status):
 
 
 def set_files(repo, req_id, files):
-    files = _as_list(files)
+    try:
+        files = _as_list(files, "files")
+    except ValueError as e:
+        return False, str(e)
     bad = _unsafe_files(files)
     if bad:
         return False, "file patterns must stay inside the repo: %s" % ", ".join(map(str, bad))

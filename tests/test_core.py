@@ -90,6 +90,25 @@ class StoreTests(unittest.TestCase):
             self.assertFalse(store.set_files(tmp, "R2", ["C:/Windows/system32/x.dll"])[0])
             self.assertFalse(store.set_files(tmp, "R2", ["/etc/passwd"])[0])
 
+    def test_registry_of_the_wrong_shape_is_quarantined(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            path = os.path.join(tmp, ".projtruth", "requirements.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('{"requirements": [1]}')     # valid JSON, unusable shape
+            self.assertEqual(store.list_requirements(tmp), [])
+            self.assertEqual(len([f for f in os.listdir(os.path.join(tmp, ".projtruth"))
+                                  if ".corrupt-" in f]), 1)
+
+    def test_dict_arguments_are_refused_not_mangled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            ok, msg = store.add_requirement(tmp, "R1", "t", {"text": "x"})
+            self.assertFalse(ok)
+            self.assertIn("list of strings", msg)
+            store.add_requirement(tmp, "R1", "t", ["c"])
+            self.assertFalse(store.set_files(tmp, "R1", {"a.py": True})[0])
+
     def test_corrupt_registry_is_quarantined_not_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             store.init(tmp)
@@ -414,6 +433,8 @@ class GitFreshnessTests(unittest.TestCase):
         os.utime(os.path.join(self.repo, "app.py"), (mid, mid))  # ...from before it
         idx = evidence.scan(self.repo)
         clock = freshness.Clock(self.repo)
+        self.assertAlmostEqual(clock.latest_change(["app.py"]), mid, places=0,
+                               msg="a dirty file must be timed by its own mtime")
         self.assertEqual(report.compute_status(store.list_requirements(self.repo)[0],
                                                idx, clock)[0], "verified")
 

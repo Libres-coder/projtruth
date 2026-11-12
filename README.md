@@ -28,8 +28,10 @@ $ projtruth report
 ```
 
 The status is **computed, not declared**. A requirement is `verified` only when
-evidence exists and the code it covers has not changed since. Declaring
-`verified` without evidence reports as `unverified`.
+evidence exists and the code it covers has not changed since. There is no
+word that grants it: `req_set_status` accepts only `pending` and
+`implemented`. A `verified` left in an older or hand-edited registry with no
+evidence behind it reports as `unverified`.
 
 ## Install
 
@@ -107,8 +109,9 @@ Details: [references/status-model.md](references/status-model.md).
 `git clone` and `git checkout` rewrite every file's timestamp. A mtime-based
 tool therefore reports "everything changed just now" on a fresh checkout - the
 opposite of the truth. When the repo is a git work tree, `projtruth` uses the
-newest commit that touched the requirement's files, and treats any uncommitted
-edit to them as "changed now". Non-git repos fall back to mtime.
+newest commit that touched the requirement's files, and counts an uncommitted
+edit at that file's own mtime - not "now", so a re-run right after an edit
+still counts as fresh. Non-git repos fall back to mtime.
 
 `.projtruth/`, `.claude/`, `.git/`, `.idea/`, `graphify-out/`, `PROGRESS.md`,
 `README*`, `CHANGELOG*`, `CONTRIBUTING*`, `LICENSE*` and `*.lock` never count as
@@ -135,7 +138,7 @@ verified.
 | `status_report` | the truth table - call first when asked what is done |
 | `req_list` | requirements, criteria count, declared status, scope |
 | `req_add` | register a requirement with criteria and file scope |
-| `req_set_status` | declare `pending` / `implemented` (`verified` is refused) |
+| `req_set_status` | declare `pending` / `implemented` (`verified`, `stale`, `unverified` are refused) |
 | `req_scope` | restrict staleness to file globs |
 | `evidence_scan` | re-index evidence by criterion id |
 | `decide` / `decisions_list` | append-only decision log |

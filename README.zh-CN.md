@@ -21,7 +21,7 @@ $ projtruth report
 | R4 前端界面           | **verified** | 1 | 1 | measured | 2 pattern(s) | 2026-11-13 06:54 |
 ```
 
-状态是**算出来的，不是声明的**。只有证据存在、且它覆盖的代码在那之后没变，需求才是 `verified`；没有证据却声明 `verified`，报告里显示 `unverified`。
+状态是**算出来的，不是声明的**。只有证据存在、且它覆盖的代码在那之后没变，需求才是 `verified`。没有哪个词能直接给到它：`req_set_status` 只接受 `pending` 和 `implemented`；旧版或手改的注册表里若留下没有证据支撑的 `verified`，报告显示为 `unverified`。
 
 ## 安装
 
@@ -91,7 +91,7 @@ projtruth req-add R5 "登录限流" "一分钟内第 6 次尝试返回 429" --fi
 
 ## 不被 mtime 骗的新鲜度
 
-`git clone` 和 `git checkout` 会重写所有文件的时间戳，只看 mtime 的工具在全新 checkout 上会报"所有代码刚刚都改过"——和事实正好相反。当仓库是 git 工作区时，`projtruth` 用的是**最后一次改到该需求文件的提交时间**，并且把"这些文件有未提交修改"直接当作"刚刚改过"；非 git 仓库才退回 mtime。
+`git clone` 和 `git checkout` 会重写所有文件的时间戳，只看 mtime 的工具在全新 checkout 上会报"所有代码刚刚都改过"——和事实正好相反。当仓库是 git 工作区时，`projtruth` 用的是**最后一次改到该需求文件的提交时间**，未提交的修改按**该文件自己的 mtime** 计时，而不是"现在"——所以改完代码立刻重跑一次检查，仍然算新证据。非 git 仓库才退回 mtime。
 
 `.projtruth/`、`.claude/`、`.git/`、`.idea/`、`graphify-out/`、`PROGRESS.md`、`README*`、`CHANGELOG*`、`CONTRIBUTING*`、`LICENSE*`、`*.lock` 都不算源码变更——否则光是 `projtruth init` 就能把整个项目刷成红色。有未提交修改的文件按**它自己的 mtime** 计算，而不是"现在"，所以改完代码立刻重跑一次证据，仍然是新证据。
 

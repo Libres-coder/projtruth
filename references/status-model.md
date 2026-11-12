@@ -1,9 +1,10 @@
 # Status model
 
-Five states. The first two are outcomes of evidence, the last three are
-declarations by a human or agent - and only `pending` / `implemented` can be
-declared through `req_set_status`; `verified` and `stale` are rejected because
-they are claims about evidence, and evidence is checked.
+Five states. `verified` and `stale` are outcomes of evidence. `pending` and
+`implemented` are declarations a human or agent makes. `unverified` is what the
+registry shows when it claims done with nothing behind it - reachable through an
+older or hand-edited registry, not through the API: `req_set_status` accepts
+only `pending` and `implemented`, and refuses the other three.
 
 | status | produced by | meaning |
 |---|---|---|
@@ -47,8 +48,9 @@ fudge factor for "almost fresh".
      `PROGRESS.md`, `README*`, `CHANGELOG*`, `CONTRIBUTING*`, `LICENSE*`, `*.lock`.
    - a plain directory in `files` means the whole subtree.
    - more than 100 matched files are queried in batches, not dropped.
-2. **not a git repo** → newest mtime among matching files (whole tree when no
-   scope), same exclusions.
+2. **not a git repo** → newest mtime among matching files. With no scope it
+   walks the whole tree and applies the same exclusions; a scoped mtime check
+   reads only the matched files.
 
 Evidence files get the same treatment (`Clock.file_time`), so a checkout that
 rewrites every mtime does not make old evidence look new.
@@ -79,9 +81,12 @@ requirement about code that does not exist yet cannot be invalidated by other
 code. That also means a typo in a glob fails silently - `req-scope` prints the
 pattern count, not the match count, and `report` never complains.
 
-Two things scope cannot see: files inside a **git submodule** (the submodule's
-own history holds those commits), and evidence **authored before** a code change
-but committed after it in the same commit (both sides use commit time).
+Three things scope cannot see: files inside a **git submodule** (the
+submodule's own history holds those commits), evidence **authored before** a code
+change but committed after it in the same commit (both sides use commit time),
+and an uncommitted edit whose mtime was restored by `cp -p` / `touch -d` - the
+mtime is the only timestamp a dirty file has, so commit the edit to be judged by
+commit time.
 
 ## Declared status is not useless
 

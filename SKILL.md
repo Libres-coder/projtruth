@@ -37,7 +37,7 @@ pip install git+https://github.com/Libres-coder/projtruth
 claude mcp add projtruth -- python -m projtruth.mcp_server
 ```
 
-Without installing, run it from a checkout: `cd <checkout> && python -m projtruth --repo <project>`.
+Without installing, run it from a checkout: `cd <checkout> && python -m projtruth --repo <project> report`.
 If neither works, say so instead of guessing - do not hand-edit `.projtruth/`.
 
 ## Use it
@@ -136,6 +136,8 @@ a previous session already settled - the reason is usually in the `why`.
 - `import-spec` is a heuristic: 2-4 `#` headings shaped `R<n>` followed by a
   separator and a title, then `- ` or `* ` bullets starting with `验收` or
   `Accept` (optional full-width colon). Check the imported list with `req-list`.
+  Dedupe is by exact text: reword a bullet and re-import, and you get a second
+  criterion - remove the old one by editing the registry.
 - Evidence is linked by filename prefix, so `R3-foo.md` feeds every `R3.n`
   criterion as well as R3. Name files by criterion when a criterion needs its
   own proof.
@@ -145,6 +147,8 @@ a previous session already settled - the reason is usually in the `why`.
 - It tracks registered requirements only; work nobody wrote down is invisible.
 - Inside a git submodule, edits are seen by the submodule's own git, not the
   superproject's - scope requirements to the parent repository's own files.
+- An uncommitted file with a back-dated mtime (`cp -p`, `touch -d`) can look
+  older than the edit really is; commit it and the commit time is used.
 - MCP reads the repo from `PROJTRUTH_REPO`, else the process cwd - start the
   server from the project root or set the variable.
 

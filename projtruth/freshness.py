@@ -21,6 +21,7 @@ Non-git repos, and requirements with no `files:` globs, fall back to mtimes.
 import fnmatch
 import glob
 import os
+import re
 import subprocess
 import time
 
@@ -38,6 +39,8 @@ EXCLUDES = [":(exclude).projtruth", ":(exclude).claude", ":(exclude).git",
             ":(exclude,glob)**/CHANGELOG*", ":(exclude,glob)**/CONTRIBUTING*",
             ":(exclude,glob)**/LICENSE*", ":(exclude,glob)**/*.lock"]
 MAX_PATHSPECS = 100
+MAX_EXPANDED = 20000
+_WIN_ABS = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def _ignored_path(path):
@@ -48,16 +51,28 @@ def _ignored_path(path):
 
 
 def _safe_pattern(pattern):
-    """Repo-relative only: an absolute path or '..' can point outside the repo."""
+    """Repo-relative only: an absolute path or '..' can point outside the repo.
+
+    `C:/x` is not absolute on POSIX, so the drive-letter form is checked
+    explicitly - a registry written on Windows must behave the same everywhere.
+    """
     p = str(pattern).replace("\\", "/")
-    if os.path.isabs(p) or p.startswith("/") or ".." in p.split("/"):
+    if os.path.isabs(p) or p.startswith("/") or _WIN_ABS.match(p):
         return False
-    return True
+    return ".." not in p.split("/")
 
 
 def _files_under(directory):
-    return [f for f in glob.glob(os.path.join(directory, "**", "*"), recursive=True)
-            if os.path.isfile(f)]
+    """Every file below directory, skipping build/VCS dirs. One walk, no re-glob
+    per matched subdirectory, and dotfiles included (glob's '*' skips them)."""
+    out = []
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+        for f in files:
+            out.append(os.path.join(root, f))
+            if len(out) >= MAX_EXPANDED:
+                return out
+    return out
 
 
 def expand(repo, patterns):
@@ -75,13 +90,19 @@ def expand(repo, patterns):
             for f in glob.glob(full, recursive=True):
                 if os.path.isfile(f):
                     out.append(f)
-                elif os.path.isdir(f):
+                elif os.path.isdir(f) and not _ignored_dir(f, repo):
                     out.extend(_files_under(f))
         elif os.path.isfile(full):
             out.append(full)
-        elif os.path.isdir(full):
+        elif os.path.isdir(full) and not _ignored_dir(full, repo):
             out.extend(_files_under(full))
     return sorted(set(out))
+
+
+def _ignored_dir(path, repo):
+    """A scope that names a build/VCS directory by hand is a mistake, not a file list."""
+    parts = os.path.relpath(path, repo).replace("\\", "/").split("/")
+    return any(part in IGNORE_DIRS for part in parts)
 
 
 def _mtime_newest(repo, patterns=None):
@@ -247,4 +268,6 @@ def _run(repo, *args):
         return None
     if proc.returncode != 0:
         return None
-    return proc.stdout.decode("utf-8", "replace")
+    # surrogateescape: git emits raw bytes for non-UTF-8 names on POSIX, and
+    # Python's os layer decodes paths the same way - only then do they compare.
+    return proc.stdout.decode("utf-8", "surrogateescape")
