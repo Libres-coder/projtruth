@@ -125,6 +125,23 @@ def render(requirements, index, clock, note="", matched=None):
     else:
         lines.append("All %d requirement(s) verified with fresh evidence."
                      % len(requirements))
+    weak = []
+    for r in requirements:
+        if compute_status(r, index, clock)[0] != "verified":
+            continue
+        evs = _req_evidence(r, index)
+        tier = (evs[-1].get("tier") or "none") if evs else "none"
+        if tier in ("none", "guessed"):
+            weak.append("- %s: freshest evidence is `%s` - %s"
+                        % (r.get("id"), tier,
+                           "a guess is a note to yourself, not proof; run the "
+                           "check and record what it printed" if tier == "guessed"
+                           else "add measured/inferred/guessed so a reader knows "
+                                "how the proof was obtained"))
+    if weak:
+        lines.append("")
+        lines.append("## Evidence quality (%d)" % len(weak))
+        lines.extend(weak)
     return "\n".join(lines)
 
 
@@ -147,8 +164,10 @@ def as_json(requirements, index, clock):
     out = []
     for req in requirements:
         status, detail = compute_status(req, index, clock)
+        evs = _req_evidence(req, index)
         out.append({"id": req.get("id"), "title": req.get("title"),
                     "status": status, "detail": detail,
+                    "evidence_tier": (evs[-1].get("tier") if evs else None),
                     "files": req.get("files", []),
                     "criteria": [{"id": c.get("id"), "text": c.get("text")}
                                  for c in req.get("criteria", [])]})

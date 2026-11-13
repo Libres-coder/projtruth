@@ -280,6 +280,27 @@ class ReportTests(unittest.TestCase):
             self.assertIn("| tier |", out)
             self.assertIn("inferred", out)
 
+    def test_verified_evidence_without_a_tier_is_reported_in_quality(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            store.add_requirement(tmp, "R1", "t", ["c"])
+            mk(os.path.join(tmp, ".projtruth", "evidence", "R1-ok.md"),
+               "```\nok\n```\n")
+            out = report.render(store.list_requirements(tmp), evidence.scan(tmp),
+                                freshness.Clock(tmp))
+            self.assertIn("Evidence quality", out)
+            self.assertIn("R1", out)
+
+    def test_measured_evidence_stays_out_of_the_quality_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            store.add_requirement(tmp, "R1", "t", ["c"])
+            mk(os.path.join(tmp, ".projtruth", "evidence", "R1-ok.md"),
+               "```\nok\n```\nmeasured\n")
+            out = report.render(store.list_requirements(tmp), evidence.scan(tmp),
+                                freshness.Clock(tmp))
+            self.assertNotIn("Evidence quality", out)
+
     def test_report_exit_strict(self):
         with tempfile.TemporaryDirectory() as tmp:
             store.init(tmp)
@@ -300,6 +321,7 @@ class JsonTests(unittest.TestCase):
             self.assertEqual(payload[0]["id"], "R1")
             self.assertEqual(payload[0]["criteria"][0]["id"], "R1.1")
             self.assertIn(payload[0]["status"], store.VALID_STATUS)
+            self.assertIn("evidence_tier", payload[0])
 
 
 @unittest.skipUnless(GIT, "git not installed")

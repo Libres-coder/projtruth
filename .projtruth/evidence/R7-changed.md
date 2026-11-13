@@ -1,5 +1,7 @@
 # R7 report --changed scopes to touched requirements
 
+_Run at 2026-11-14 01:38:06_
+
 ```
 $ python -m unittest tests.test_guard.GlobTests -v   # exit 0
 test_directory_pattern_covers_the_subtree (tests.test_guard.GlobTests) ... ok
@@ -15,7 +17,7 @@ OK
 
 ```
 $ python -m projtruth report --changed HEAD   # only server.py changed   # exit 0
-# projtruth status report (2026-11-13 19:33) - changes since HEAD: 2 file(s), 2 requirement(s) in scope
+# projtruth status report (2026-11-14 01:38) - changes since HEAD: 2 file(s), 2 requirement(s) in scope
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence | changed files |
 |---|---|---|---|---|---|---|---|

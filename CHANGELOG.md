@@ -3,6 +3,16 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-11-14
+
+### Added
+- `report` ends with an **Evidence quality** section when a *verified*
+  requirement's freshest evidence is `guessed` or carries no tier. Status is
+  unchanged - a fresh file is still fresh - but "verified by a guess" stops
+  being invisible, which is the failure the tier word exists to prevent.
+- `report --json` carries `evidence_tier` per requirement, so a consumer can
+  gate on quality without parsing the table.
+
 ## [1.2.1] - 2026-11-13
 
 ### Fixed
