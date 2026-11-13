@@ -212,6 +212,9 @@ a pre-commit hook it did not write.
 - `import-spec` is a heuristic over headings and bullet prefixes - check its output.
 - Evidence links by filename prefix; `R3-x.md` feeds every `R3.n` criterion.
 - A scope glob that matches nothing means "never stale" - a typo fails silently.
+- Scope paths follow the repository's spelling: Windows resolves a wrong-case
+  path locally, so a registry written there can match nothing on Linux/CI.
+  Write the path as `git ls-files` prints it.
 - Inside a git submodule, edits are invisible to the superproject's history.
 - Unscoped requirements go stale on any source change (by design).
 - Only registered requirements are tracked; undocumented work is invisible.
