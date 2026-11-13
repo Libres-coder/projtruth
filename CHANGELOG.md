@@ -3,6 +3,13 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-13
+
+### Fixed
+- The evidence tier was read as the first `measured|inferred|guessed` anywhere in
+  the body, so a test name or a quoted sentence could decide it. A tier on its
+  own line now wins; the loose match is only a fallback.
+
 ## [1.2.0] - 2026-11-13
 
 ### Added

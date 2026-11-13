@@ -174,6 +174,14 @@ class EvidenceTests(unittest.TestCase):
             self.assertIn("R3.1", idx)
             self.assertEqual(idx["R3.1"][0]["file"], ".projtruth/evidence/R3.1-build.txt")
 
+    def test_tier_prefers_a_standalone_line(self):
+        """A test name or a quoted sentence must not decide the tier."""
+        with tempfile.TemporaryDirectory() as tmp:
+            mk(os.path.join(tmp, ".projtruth", "evidence", "R1-a.md"),
+               "```\n$ pytest -k guessed_evidence\n1 passed\n```\n\nmeasured\n")
+            idx = evidence.scan(tmp)
+            self.assertEqual(idx["R1"][0]["tier"], "measured")
+
     def test_index_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
             mk(os.path.join(tmp, ".projtruth", "evidence", "R1-a.md"), "measured\n")

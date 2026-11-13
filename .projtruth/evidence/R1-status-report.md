@@ -2,10 +2,10 @@
 
 ```
 $ python -m unittest tests.test_core.ReportTests -v   # exit 0
-# projtruth status report (2026-11-13 17:19)
+# projtruth status report (2026-11-13 19:32)
 
 No requirements registered yet. Run `projtruth import-spec spec.md` or add one with req_add.
-# projtruth status report (2026-11-13 17:19)
+# projtruth status report (2026-11-13 19:32)
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence |
 |---|---|---|---|---|---|---|
@@ -13,7 +13,7 @@ No requirements registered yet. Run `projtruth import-spec spec.md` or add one w
 
 ## Needs attention (1 of 1)
 - R1 (pending, not started): no evidence
-# projtruth status report (2026-11-13 17:19)
+# projtruth status report (2026-11-13 19:32)
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence |
 |---|---|---|---|---|---|---|
@@ -33,7 +33,7 @@ test_statuses (tests.test_core.ReportTests) ... ok
 test_table_reports_evidence_tier (tests.test_core.ReportTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 7 tests in 0.489s
+Ran 7 tests in 0.497s
 
 OK
 ```
@@ -59,7 +59,7 @@ An edit at 10:00 and evidence written at 10:05: the evidence answers ... ok
 test_untracked_directory_of_new_source_files_counts (tests.test_core.GitFreshnessTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 11 tests in 11.705s
+Ran 11 tests in 12.375s
 
 OK
 ```

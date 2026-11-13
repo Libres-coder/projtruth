@@ -17,6 +17,10 @@ import os
 import re
 
 TIER_RE = re.compile(r"measured|inferred|guessed", re.IGNORECASE)
+# A tier on its own line is the convention; anywhere else can be a word
+# in a test name or a quoted sentence.
+TIER_LINE_RE = re.compile(r"^[ 	]*(measured|inferred|guessed)[ 	]*\.?[ 	]*$",
+                          re.IGNORECASE | re.MULTILINE)
 CRIT_RE = re.compile(r"^(R\d+(?:\.\d+)?)", re.IGNORECASE)
 # An explicit link beats the filename: any tool can drop a file and say what it
 # proves, without renaming it to our convention.
@@ -75,10 +79,10 @@ def scan(repo):
             if not m:
                 continue
             keys = [m.group(1).upper()]
-        tier_m = TIER_RE.search(body)
+        tier_m = TIER_LINE_RE.search(body) or TIER_RE.search(body)
         entry = {
             "file": os.path.relpath(f, repo).replace("\\", "/"),
-            "tier": (tier_m.group(0).lower() if tier_m else "none"),
+            "tier": (tier_m.group(0).strip().lower() if tier_m else "none"),
             "mtime": mtime,
         }
         for key in keys:
