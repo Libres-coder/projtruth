@@ -122,6 +122,15 @@ class ReviewFixesTests(unittest.TestCase):
             self.assertEqual([r["id"] for r, _ in blocking], ["R1"],
                              "R10 evidence must not count for R1")
 
+    def test_renaming_the_only_file_makes_the_requirement_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp, files=("old.py",))
+            self.assertEqual(self._status(tmp), "verified")
+            self._git(tmp, "mv", "old.py", "new.py")
+            self._git(tmp, "commit", "-qm", "rename", date=1700000100)
+            self.assertEqual(self._status(tmp), "stale",
+                             "a rename is a change to the scope")
+
     def test_a_staged_evidence_deletion_is_not_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             self._repo(tmp)
