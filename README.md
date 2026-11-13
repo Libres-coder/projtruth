@@ -89,6 +89,15 @@ Evidence is a file whose basename starts with the criterion or requirement id:
 The body should contain the real output and a tier word - `measured`,
 `inferred` or `guessed`. See [references/evidence-format.md](references/evidence-format.md).
 
+### Evidence quality
+
+A fresh file proves that something ran; the tier says how well. When a
+*verified* requirement's newest evidence is `guessed` or carries no tier,
+`report` adds an **Evidence quality** section: the status stays `verified`
+(a fresh file is still fresh), but "fresh" and "proven" stop being the same
+word. `report --json` carries the same fact as `evidence_tier`, so a consumer
+can gate on quality without parsing the table.
+
 A file can also say what it proves, which is how one CI log covers three
 requirements without being renamed:
 
