@@ -75,6 +75,14 @@ projtruth req-add R5 "登录限流" "一分钟内第 6 次尝试返回 429" --fi
 
 正文里应该放真实输出，以及 `measured` / `inferred` / `guessed` 三档之一。详见 [references/evidence-format.md](references/evidence-format.md)。
 
+文件也可以自己说明它证明哪些需求——这样一份 CI 日志就能覆盖三条需求，而不用改名：
+
+```
+projtruth: R1, R2.3
+```
+
+HTML 注释形式（`<!-- projtruth: R1 -->`）同样有效，声明优先于文件名。
+
 ## 状态模型
 
 | 状态 | 含义 |
@@ -109,7 +117,7 @@ projtruth req-scope R1 server.py "web/api/**/*.js"
 
 | 工具 | 用途 |
 |---|---|
-| `status_report` | 真相表——被问"做完没有"时先调它 |
+| `status_report` | 真相表——被问"做完没有"时先调它；传 `changed_since` 可只看分支动到的需求 |
 | `req_list` | 需求列表、标准数、声明状态、作用域 |
 | `req_add` | 登记需求、验收标准与文件作用域 |
 | `req_set_status` | 声明 `pending` / `implemented`（`verified` 会被拒绝） |
@@ -122,10 +130,21 @@ stdio JSON-RPC 2.0，按行分隔，无依赖，Windows 下强制 UTF-8。
 ## CI 门禁
 
 ```bash
-projtruth report --strict      # 只要还有未验证需求就 exit 1
+projtruth report --strict                         # 只要还有未验证需求就 exit 1
+projtruth report --changed origin/main --strict   # PR 门禁：只看这个分支动到的需求
 ```
 
-GitHub Actions 示例见 [references/ci-gate.md](references/ci-gate.md)（记得 `fetch-depth: 0`，也请读一下门禁**不能**证明什么）。
+`--changed` 只列出这条分支的文件真正触及的需求，并列出每条需求对应的改动文件；一个没碰到任何需求的 PR 会通过。GitHub Actions 示例见 [references/ci-gate.md](references/ci-gate.md)（记得 `fetch-depth: 0`，也请读一下门禁**不能**证明什么）。
+
+## 提交守卫
+
+```bash
+projtruth hook install     # 写入 .git/hooks/pre-commit
+projtruth hook status
+projtruth hook uninstall
+```
+
+守卫会拒绝这样一种提交：它改动了**当前仍是 verified** 的需求所依赖的文件，却没有同时提交这些需求的新证据——否则这次提交会把"已证明"悄悄变成"已过期"。已经是 stale 的需求不会拦，所以它不会把正在追赶的仓库锁死。`PROJTRUTH_ALLOW_STALE=1` 和 `git commit --no-verify` 是两条显式逃生口；它也不会覆盖别人写的 pre-commit 钩子。
 
 ## 设计取向
 
@@ -148,6 +167,7 @@ GitHub Actions 示例见 [references/ci-gate.md](references/ci-gate.md)（记得
 - 没有作用域的需求，任何源码改动都会 stale（这是设计）。
 - 只追踪已登记的需求；没写下来的工作它看不见。
 - 它不执行任何东西，只报告被记录了什么、以及何时记录的。
+- 提交守卫只在跑过 `projtruth hook install` 的仓库里存在。
 
 ## 许可证
 

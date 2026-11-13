@@ -14,9 +14,15 @@ test_tool_flow (tests.test_mcp.McpTests) ... ok
 test_utf8_payload_survives (tests.test_mcp.McpTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 0.280s
+Ran 8 tests in 0.288s
 
 OK
+```
+
+```
+$ printf '<tools/list + req_list>' | python projtruth/mcp_server.py   # exit 0
+tools/list -> 8 tools: decide, decisions_list, evidence_scan, req_add, req_list, req_scope, req_set_status, status_report
+req_list -> {"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "R1  Status is computed from evidence and real code changes  [2 criteria]  status=ve...
 ```
 
 measured

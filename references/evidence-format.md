@@ -26,6 +26,25 @@ notes.md            ignored - no id prefix
 Prefix match is case-insensitive (`r3-open.md` works). The id must start the
 basename.
 
+## Or declare it
+
+A file can name its requirements instead:
+
+```
+projtruth: R1, R2.3
+<!-- projtruth: R1, R2.3 -->
+```
+
+Either form works on any line. When present it **replaces** the filename rule -
+the file feeds exactly those ids and nothing else. This is the right tool when:
+
+- one run covers several requirements (a CI job, a smoke script),
+- the artifact has its own name (`doctor.md`, `nightly.log`, `trace.txt`),
+- the proof comes from a tool that will never know our naming convention.
+
+An id that no requirement uses is ignored, not an error - a typo is silent, so
+check `evidence_scan` when a requirement stays `stale` with evidence on disk.
+
 ## Body
 
 Minimum: something a human can re-run or re-read.

@@ -48,7 +48,11 @@ fudge factor for "almost fresh".
      `PROGRESS.md`, `README*`, `CHANGELOG*`, `CONTRIBUTING*`, `LICENSE*`, `*.lock`.
    - a plain directory in `files` means the whole subtree.
    - more than 100 matched files are queried in batches, not dropped.
-2. **not a git repo** → newest mtime among matching files. With no scope it
+2. **committed-only mode** (`Clock(repo, dirty=False)`) answers "what was true
+   at HEAD?" - uncommitted edits are ignored. The commit guard uses it, because
+   at commit time the staged edit is already on disk and the working-tree answer
+   is always "changed".
+3. **not a git repo** → newest mtime among matching files. With no scope it
    walks the whole tree and applies the same exclusions; a scoped mtime check
    reads only the matched files.
 

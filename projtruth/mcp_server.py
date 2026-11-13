@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(HERE))  # make the package importable
 
 from projtruth import evidence, freshness, report, store  # noqa: E402
 
-SERVER_INFO = {"name": "projtruth", "version": "1.1.0"}
+SERVER_INFO = {"name": "projtruth", "version": "1.2.0"}
 PROTOCOL = "2025-03-26"
 
 TOOLS = [

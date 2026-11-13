@@ -24,6 +24,18 @@ jobs:
 evidence files can return the graft commit's time and freshness judgements
 become arbitrary.
 
+## PR gate: only what the branch touches
+
+A full-repo `--strict` fails on requirements the branch never went near. Scope it:
+
+```bash
+projtruth report --changed origin/main --strict
+```
+
+`--changed` lists the requirements whose file scope matches the branch's
+changes - plus any untouched requirement that is not verified, so a pre-existing
+problem still shows. A PR that touches no tracked requirement passes.
+
 ## Pre-commit variant
 
 ```bash
@@ -32,6 +44,10 @@ projtruth report --strict || {
   exit 1
 }
 ```
+
+Or enforce it at commit time with the guard (`projtruth hook install`): it only
+blocks the transition *verified → stale*, i.e. a commit changing a requirement's
+files without staging evidence. Already-stale requirements never block.
 
 If the gate is only meant for release branches, run it there instead of on
 every push: a WIP branch is legitimately full of `pending` requirements.

@@ -55,6 +55,10 @@ All three are safe to run repeatedly: `init` only creates what is missing,
 `import-spec` skips criteria it already has, `report` writes nothing but the
 derived index. None of them deletes a requirement.
 
+Reviewing a branch or a PR? `python -m projtruth report --changed origin/main`
+lists only the requirements those files touch, with the changed files per
+requirement. Add `--strict` to make it a gate.
+
 ## Status is computed, not declared
 
 | status | meaning | what it means for you |
@@ -82,6 +86,17 @@ Evidence is a file whose basename starts with the criterion or requirement id:
 Put the real command output in a fenced block and one of the words `measured`,
 `inferred` or `guessed` in the body; `report` shows that tier next to the
 freshest evidence. See [references/evidence-format.md](references/evidence-format.md).
+
+**Evidence can say what it proves**, instead of being named after it:
+
+```
+projtruth: R1, R2.3
+```
+
+That line in any file under an evidence root links it to those requirements and
+overrides the filename. It is how a CI log, a doctor note or one re-check that
+covers three requirements becomes evidence without being renamed. An HTML
+comment (`<!-- projtruth: R1 -->`) works too.
 
 Do not hand-write a status to make a report look green. Either produce evidence
 or leave the requirement `stale`/`pending` - a report people trust is the whole
@@ -121,6 +136,21 @@ counted as source changes - `init` alone must not turn a green repo red.
 Report what the table says, including the ugly rows. Suggest `--strict` (exit 1
 unless every requirement is verified, and on an empty registry) when the user
 wants a release gate.
+
+## The commit guard
+
+`python -m projtruth hook install` writes a git pre-commit hook. It refuses a
+commit that stages a change to a requirement which is **verified right now**
+unless the same commit also stages evidence for it - the commit would otherwise
+silently turn proof into `stale`.
+
+- Already-stale requirements never block; the guard is not a ratchet.
+- `PROJTRUTH_ALLOW_STALE=1 git commit ...` and `git commit --no-verify` both get
+  through, deliberately and visibly.
+- `hook status` says whether a hook is installed and whose it is; `hook install`
+  refuses to overwrite one it did not write (`--force` overrides).
+- If a user's commit is blocked, do not "fix" it by deleting the requirement or
+  editing status by hand. Re-run the check, write the evidence, stage it.
 
 ## Decisions
 

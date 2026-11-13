@@ -89,6 +89,16 @@ Evidence is a file whose basename starts with the criterion or requirement id:
 The body should contain the real output and a tier word - `measured`,
 `inferred` or `guessed`. See [references/evidence-format.md](references/evidence-format.md).
 
+A file can also say what it proves, which is how one CI log covers three
+requirements without being renamed:
+
+```
+projtruth: R1, R2.3
+```
+
+An HTML comment (`<!-- projtruth: R1 -->`) works too, and an explicit
+declaration overrides the filename.
+
 ## Status model
 
 | status | meaning |
@@ -135,7 +145,7 @@ verified.
 
 | tool | for |
 |---|---|
-| `status_report` | the truth table - call first when asked what is done |
+| `status_report` | the truth table - call first when asked what is done; pass `changed_since` to scope it to a branch |
 | `req_list` | requirements, criteria count, declared status, scope |
 | `req_add` | register a requirement with criteria and file scope |
 | `req_set_status` | declare `pending` / `implemented` (`verified`, `stale`, `unverified` are refused) |
@@ -148,11 +158,29 @@ Stdio JSON-RPC 2.0, newline-delimited, no dependencies, UTF-8 forced on Windows.
 ## CI gate
 
 ```bash
-projtruth report --strict      # exit 1 unless every requirement is verified
+projtruth report --strict                         # exit 1 unless everything is verified
+projtruth report --changed origin/main --strict   # PR gate: only what the branch touches
 ```
 
-See [references/ci-gate.md](references/ci-gate.md) for a GitHub Actions job
-(use `fetch-depth: 0`, and note what the gate does not prove).
+`--changed` lists exactly the requirements the branch's files touch, with the
+matched changed files per requirement; a PR that touches no tracked requirement
+passes. See [references/ci-gate.md](references/ci-gate.md) for a GitHub Actions
+job (use `fetch-depth: 0`, and note what the gate does not prove).
+
+## Commit guard
+
+```bash
+projtruth hook install     # writes .git/hooks/pre-commit
+projtruth hook status
+projtruth hook uninstall
+```
+
+The guard refuses a commit that stages a change to a requirement which is
+verified *right now* without also staging evidence for it - that commit would
+silently turn proof into `stale`. Already-stale requirements never block, so it
+cannot trap a repository that is catching up. `PROJTRUTH_ALLOW_STALE=1` and
+`git commit --no-verify` are the explicit escapes; the hook refuses to overwrite
+a pre-commit hook it did not write.
 
 ## Design
 
@@ -179,6 +207,7 @@ See [references/ci-gate.md](references/ci-gate.md) for a GitHub Actions job
 - Unscoped requirements go stale on any source change (by design).
 - Only registered requirements are tracked; undocumented work is invisible.
 - It does not run anything. It reports what was recorded, and when.
+- The commit guard only exists where `projtruth hook install` was run.
 
 ## License
 

@@ -3,6 +3,30 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-13
+
+### Added
+- **Declared evidence.** A file may say what it proves instead of being named
+  after it: `projtruth: R1, R4` (an HTML comment works too) links one file to
+  several requirements and overrides the filename prefix. A CI log, a doctor
+  note or a screenshot transcript can now feed exactly the requirements it
+  proves.
+- **`report --changed [REF]`** and **`status_report(changed_since=...)`**:
+  narrow a report to the requirements a branch touches, with the matched
+  changed files per requirement. `--strict --changed` is the PR gate; a PR that
+  touches no tracked requirement passes.
+- **`guard` + `hook install`**: a git pre-commit hook that refuses a commit
+  which would turn a *verified* requirement stale without staging new evidence.
+  Already-stale requirements never block. Escapes: `PROJTRUTH_ALLOW_STALE=1` and
+  `git commit --no-verify`, both explicit. The hook refuses to overwrite a
+  pre-commit hook it did not write, and `hook status` says which is installed.
+
+### Changed
+- Path matching is path-aware: `**/` spans directories and `*` stops at a
+  slash, so `web/**/*.js` matches `web/app.js` - the pattern people write first.
+- `Clock(repo, dirty=False)` answers "what was true at HEAD?", which is what the
+  guard needs: at commit time the staged edit is already on disk.
+
 ## [1.1.0] - 2026-11-13
 
 ### Added

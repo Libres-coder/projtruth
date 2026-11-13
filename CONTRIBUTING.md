@@ -17,6 +17,7 @@ change merged is to keep it that way.
 
 ```bash
 python -m unittest discover -s tests -v
+projtruth hook install          # optional: the guard in this repo's own commits
 ```
 
 The git-freshness tests create throwaway repositories in the system temp

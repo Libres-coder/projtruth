@@ -15,8 +15,8 @@ OK
 
 ```
 $ (demo-todo) echo '# demonstration edit' >> server.py
-python -m projtruth report --changed HEAD
-# projtruth status report (2026-11-13 17:19) - changes since HEAD: 3 file(s), 3 requirement(s) in scope
+python -m projtruth report --changed HEAD   # exit 0
+# projtruth status report (2026-11-13 17:22) - changes since HEAD: 3 file(s), 3 requirement(s) in scope
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence | changed files |
 |---|---|---|---|---|---|---|---|
