@@ -101,6 +101,70 @@
           "judge": "command"
         }
       ]
+    },
+    {
+      "id": "R6",
+      "title": "Evidence can declare the requirements it proves",
+      "status": "pending",
+      "files": [
+        "projtruth/evidence.py"
+      ],
+      "criteria": [
+        {
+          "id": "R6.1",
+          "text": "A projtruth: directive links a file under any name",
+          "judge": "command"
+        },
+        {
+          "id": "R6.2",
+          "text": "A directive overrides the filename prefix",
+          "judge": "command"
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "title": "report --changed scopes the report to touched requirements",
+      "status": "pending",
+      "files": [
+        "projtruth/freshness.py",
+        "projtruth/report.py",
+        "projtruth/cli.py",
+        "projtruth/mcp_server.py"
+      ],
+      "criteria": [
+        {
+          "id": "R7.1",
+          "text": "Only requirements whose file scope matches the change are listed",
+          "judge": "command"
+        },
+        {
+          "id": "R7.2",
+          "text": "Untouched requirements that are not verified stay visible",
+          "judge": "command"
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "title": "The commit guard refuses to invalidate verified evidence",
+      "status": "pending",
+      "files": [
+        "projtruth/guard.py",
+        "projtruth/cli.py"
+      ],
+      "criteria": [
+        {
+          "id": "R8.1",
+          "text": "A staged source change without staged evidence blocks the commit",
+          "judge": "command"
+        },
+        {
+          "id": "R8.2",
+          "text": "Already stale requirements never block, and no registry means no guard",
+          "judge": "command"
+        }
+      ]
     }
   ]
 }

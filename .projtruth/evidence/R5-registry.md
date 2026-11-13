@@ -12,7 +12,7 @@ test_single_strings_are_not_split_into_characters (tests.test_core.StoreTests) .
 test_unsafe_file_patterns_are_rejected (tests.test_core.StoreTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 0.102s
+Ran 8 tests in 0.081s
 
 OK
 ```

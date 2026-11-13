@@ -94,8 +94,17 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true",
                    help="exit 1 unless every requirement is verified (empty registry fails too)")
+    p.add_argument("--changed", nargs="?", const="HEAD", default=None, metavar="REF",
+                   help="only requirements touched by changes since REF (default HEAD)")
     p = sub.add_parser("decide"); p.add_argument("decision"); p.add_argument("--why", default="")
     sub.add_parser("decisions")
+    p = sub.add_parser("guard")
+    p.add_argument("--allow", action="store_true",
+                   help="report but never block (same as PROJTRUTH_ALLOW_STALE=1)")
+    p = sub.add_parser("hook")
+    p.add_argument("action", choices=["install", "uninstall", "status"])
+    p.add_argument("--force", action="store_true",
+                   help="overwrite or remove a pre-commit hook that is not ours")
 
     args = ap.parse_args(argv)
     repo = os.path.abspath(args.repo)
@@ -142,24 +151,46 @@ def main(argv=None):
         idx = evidence.scan(repo)
         evidence.save_index(repo, idx)
         clock = freshness.Clock(repo)
-        reqs = store.list_requirements(repo)
+        all_reqs = reqs = store.list_requirements(repo)
+        note, matched = "", None
+        if args.changed:
+            changed = freshness.changed_files(repo, args.changed)
+            if changed is None:
+                print("cannot read git changes since %r - is this a git work tree?"
+                      % args.changed, file=sys.stderr)
+                return 1
+            pairs = report.changed_subset(reqs, idx, clock, changed)
+            reqs = [r for r, _ in pairs]
+            matched = dict((r["id"], hits) for r, hits in pairs)
+            note = "changes since %s: %d file(s), %d requirement(s) in scope" % (
+                args.changed, len(changed), len(reqs))
         if args.json:
             _utf8_stdout()
             print(json.dumps(report.as_json(reqs, idx, clock), ensure_ascii=False, indent=2))
         else:
             _utf8_stdout()
-            print(report.render(reqs, idx, clock))
+            print(report.render(reqs, idx, clock, note=note, matched=matched))
         if args.strict:
-            if not reqs:
+            if not all_reqs:
                 print("strict: no requirements registered - nothing to gate on",
                       file=sys.stderr)
                 return 1
+            if args.changed and not reqs:
+                print("strict: no requirement is touched by these changes",
+                      file=sys.stderr)
+                return 0
             bad = [r["id"] for r in reqs
                    if report.compute_status(r, idx, clock)[0] != "verified"]
             if bad:
                 print("strict: not verified: %s" % ", ".join(bad), file=sys.stderr)
                 return 1
         return 0
+    if args.cmd == "guard":
+        from . import guard
+        return guard.main(repo, allow=args.allow or bool(os.environ.get("PROJTRUTH_ALLOW_STALE")))
+    if args.cmd == "hook":
+        from . import guard
+        return guard.hook_command(repo, args.action, force=args.force)
     if args.cmd == "decide":
         row = store.append_decision(repo, args.decision, args.why)
         print("decided: %s" % row["decision"])

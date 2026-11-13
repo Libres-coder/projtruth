@@ -18,6 +18,12 @@ import re
 
 TIER_RE = re.compile(r"measured|inferred|guessed", re.IGNORECASE)
 CRIT_RE = re.compile(r"^(R\d+(?:\.\d+)?)", re.IGNORECASE)
+# An explicit link beats the filename: any tool can drop a file and say what it
+# proves, without renaming it to our convention.
+DIRECTIVE_RE = re.compile(
+    r"^[ \t]*(?:<!--[ \t]*)?projtruth[ \t]*:[ \t]*(?P<body>[^\r\n]*?)[ \t]*(?:-->)?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE)
+ID_RE = re.compile(r"R\d+(?:\.\d+)?", re.IGNORECASE)
 INDEX_NAME = "evidence-index.json"
 
 EVIDENCE_ROOTS = (
@@ -30,6 +36,24 @@ def roots(repo):
     return [os.path.join(repo, r) for r in EVIDENCE_ROOTS]
 
 
+def declared_ids(body):
+    """Ids from an explicit `projtruth: R1.2, R4` line (an HTML comment is fine).
+
+    Explicit beats the filename, so evidence may live under any name - a CI log,
+    a doctor note, a screenshot transcript - and still feed exactly the
+    requirements it proves.
+    """
+    m = DIRECTIVE_RE.search(body)
+    if not m:
+        return []
+    ids = []
+    for raw in ID_RE.findall(m.group("body")):
+        rid = raw.upper()
+        if rid not in ids:
+            ids.append(rid)
+    return ids
+
+
 def scan(repo):
     """Return index: {criterion_id: [{file, tier, mtime}]} (sorted oldest->newest)."""
     index = {}
@@ -39,22 +63,26 @@ def scan(repo):
     for f in sorted(set(files)):
         if not os.path.isfile(f):
             continue
-        m = CRIT_RE.match(os.path.basename(f))
-        if not m:
-            continue
-        crit = m.group(1).upper()
         try:
             with open(f, "r", encoding="utf-8-sig", errors="replace") as fh:
                 body = fh.read()
             mtime = os.path.getmtime(f)
         except OSError:
             continue          # deleted between the glob and the read
+        keys = declared_ids(body)
+        if not keys:
+            m = CRIT_RE.match(os.path.basename(f))
+            if not m:
+                continue
+            keys = [m.group(1).upper()]
         tier_m = TIER_RE.search(body)
-        index.setdefault(crit, []).append({
+        entry = {
             "file": os.path.relpath(f, repo).replace("\\", "/"),
             "tier": (tier_m.group(0).lower() if tier_m else "none"),
             "mtime": mtime,
-        })
+        }
+        for key in keys:
+            index.setdefault(key, []).append(dict(entry))
     for crit in index:
         index[crit].sort(key=lambda e: e["mtime"])
     return index

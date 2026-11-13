@@ -26,8 +26,13 @@ TOOLS = [
         "description": ("Where the project actually stands: every requirement with its "
                         "computed status (verified/stale/unverified/pending) and the "
                         "evidence behind it. Call this first when asked what is done, "
-                        "what is left, or whether a feature is really finished."),
-        "inputSchema": {"type": "object", "properties": {}},
+                        "what is left, or whether a feature is really finished. Pass "
+                        "changed_since to narrow it to what a branch or PR touches."),
+        "inputSchema": {"type": "object",
+                        "properties": {
+                            "changed_since": {
+                                "type": "string",
+                                "description": "git ref (e.g. origin/main); report only requirements touched by changes since it"}}},
     },
     {
         "name": "req_list",
@@ -102,7 +107,20 @@ def call_tool(name, args):
     if name == "status_report":
         idx = evidence.scan(repo)
         evidence.save_index(repo, idx)
-        return report.render(store.list_requirements(repo), idx, freshness.Clock(repo))
+        clock = freshness.Clock(repo)
+        reqs = store.list_requirements(repo)
+        since = args.get("changed_since")
+        if not since:
+            return report.render(reqs, idx, clock)
+        changed = freshness.changed_files(repo, since)
+        if changed is None:
+            raise ValueError("cannot read git changes since %r - not a git work tree "
+                             "or unknown ref" % since)
+        pairs = report.changed_subset(reqs, idx, clock, changed)
+        matched = dict((r["id"], hits) for r, hits in pairs)
+        note = "changes since %s: %d file(s), %d requirement(s) in scope" % (
+            since, len(changed), len(pairs))
+        return report.render([r for r, _ in pairs], idx, clock, note=note, matched=matched)
     if name == "req_list":
         reqs = store.list_requirements(repo)
         if not reqs:

@@ -127,11 +127,129 @@ def _mtime_newest(repo, patterns=None):
     return newest
 
 
+def _parse_status(out):
+    """Paths from `git status --porcelain -z` output.
+
+    The field order for a rename is destination first, origin second (and the
+    origin is its own NUL field) - so the origin must be skipped, or it would be
+    read as a file named after the old path.
+    """
+    paths = []
+    fields = out.split("\0") if out else []
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        status, path = entry[:2], entry[3:]
+        if "R" in status or "C" in status:
+            i += 1
+        paths.append(path.replace("\\", "/"))
+    return paths
+
+
+def changed_files(repo, since="HEAD"):
+    """Repo-relative files changed since a git ref, plus uncommitted changes.
+
+    Returns None when git cannot answer (not a repo, unknown ref) - the caller
+    must not treat that as "nothing changed".
+    """
+    committed = []
+    if str(since).upper() != "HEAD":
+        out = _run(repo, "diff", "--name-only", "-z", "%s...HEAD" % since)
+        if out is None:
+            return None
+        committed = [p for p in out.split("\0") if p]
+    status = _run(repo, "-c", "core.quotePath=false", "status", "--porcelain",
+                  "-z", "--untracked-files=all")
+    if status is None:
+        return None
+    return sorted(set(committed) | set(_parse_status(status)))
+
+
+def _glob_to_re(pattern):
+    """Path-aware glob: `*` stops at a slash, `**/` spans directories.
+
+    fnmatch's `*` crosses slashes, so `web/**/*.js` would miss `web/app.js` -
+    the exact pattern people write first.
+    """
+    out, i, n = [], 0, len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            if pattern[i:i + 3] == "**/":
+                out.append("(?:.*/)?")
+                i += 3
+            elif pattern[i:i + 2] == "**":
+                out.append(".*")
+                i += 2
+            else:
+                out.append("[^/]*")
+                i += 1
+        elif c == "?":
+            out.append("[^/]")
+            i += 1
+        elif c == "[":
+            j = pattern.find("]", i + 1)
+            if j == -1:
+                out.append(re.escape(c))
+                i += 1
+            else:
+                out.append(pattern[i:j + 1])
+                i = j + 1
+        else:
+            out.append(re.escape(c))
+            i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
+_GLOB_CACHE = {}
+
+
+def _glob_match(rel, pattern):
+    rx = _GLOB_CACHE.get(pattern)
+    if rx is None:
+        rx = _GLOB_CACHE[pattern] = _glob_to_re(pattern)
+    return rx.match(rel) is not None
+
+
+def path_matches(rel, pattern):
+    """Does a repo-relative path fall under a requirement's file pattern?"""
+    rel = rel.replace("\\", "/")
+    p = str(pattern).replace("\\", "/")
+    if p.startswith("./"):
+        p = p[2:]
+    if not _safe_pattern(p):
+        return False
+    if any(ch in p for ch in "*?["):
+        return _glob_match(rel, p)
+    p = p.rstrip("/")
+    return rel == p or rel.startswith(p + "/")
+
+
+def matching_changes(req, changed):
+    """The subset of `changed` (repo-relative) this requirement depends on."""
+    rels = [c.replace("\\", "/") for c in changed if not _ignored_path(c)]
+    patterns = req.get("files") or []
+    if not patterns:
+        return rels                      # unscoped: any source change counts
+    out = []
+    for rel in rels:
+        if any(path_matches(rel, p) for p in patterns):
+            out.append(rel)
+    return out
+
+
 class Clock(object):
     """Answers: when was this requirement's code last changed?"""
 
-    def __init__(self, repo):
+    def __init__(self, repo, dirty=True):
+        """dirty=False answers "what was true at HEAD?" - uncommitted edits are
+        ignored. The commit guard needs that: at commit time the staged edit is
+        already on disk, so the working-tree answer is always "changed". """
         self.repo = os.path.abspath(repo)
+        self.use_dirty = dirty
         self._is_git = None
         self._dirty = None
         self._dirty_all = None
@@ -157,23 +275,9 @@ class Clock(object):
             # otherwise collapsed to "dir/", which no file path can match.
             out = _run(self.repo, "-c", "core.quotePath=false", "status",
                        "--porcelain", "-z", "--untracked-files=all")
-            every, paths = [], []
-            fields = out.split("\0") if out else []
-            i = 0
-            while i < len(fields):
-                entry = fields[i]
-                i += 1
-                if len(entry) < 4:
-                    continue
-                status, path = entry[:2], entry[3:]
-                if "R" in status or "C" in status:
-                    i += 1          # the old path follows as its own field
-                path = path.replace("\\", "/")
-                every.append(path)
-                if not _ignored_path(path):
-                    paths.append(path)
+            every = _parse_status(out)
             self._dirty_all = every
-            self._dirty = paths
+            self._dirty = [p for p in every if not _ignored_path(p)]
         return (self._dirty or []) if filtered else (self._dirty_all or [])
 
     def _mtime_of(self, rel):
@@ -215,7 +319,7 @@ class Clock(object):
         files = expand(self.repo, patterns) if patterns else []
         if patterns and not files:
             return 0.0
-        dirty = self._dirty_paths()
+        dirty = self._dirty_paths() if self.use_dirty else []
         if patterns:
             rels = [os.path.relpath(f, self.repo).replace("\\", "/") for f in files]
             newest = 0.0
@@ -247,8 +351,8 @@ class Clock(object):
             return self._file_cache[rel]
         if not self.is_git():
             ts = self._mtime_of(rel)
-        elif any(rel == d or fnmatch.fnmatch(rel, d)
-                 for d in self._dirty_paths(filtered=False)):
+        elif self.use_dirty and any(rel == d or fnmatch.fnmatch(rel, d)
+                                    for d in self._dirty_paths(filtered=False)):
             ts = self._changed_time(rel)
         else:
             ts = self._log_time([rel])

@@ -7,7 +7,7 @@ test_import_spec (tests.test_core.ImportTests) ... ok
 test_import_spec_is_idempotent (tests.test_core.ImportTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 3 tests in 0.049s
+Ran 3 tests in 0.043s
 
 OK
 ```

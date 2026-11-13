@@ -11,6 +11,8 @@ Five states, and only two of them mean "done":
 """
 import time
 
+from . import freshness
+
 STATUS_NOTE = {
     "verified": "fresh evidence",
     "stale": "re-verify",
@@ -77,25 +79,39 @@ def _ago(then):
     return "%dd ago" % int(delta // 86400)
 
 
-def render(requirements, index, clock):
-    lines = ["# projtruth status report (%s)" % time.strftime("%Y-%m-%d %H:%M"), ""]
+def render(requirements, index, clock, note="", matched=None):
+    """`matched` (id -> changed files) adds the PR-scope column."""
+    lines = ["# projtruth status report (%s)%s"
+             % (time.strftime("%Y-%m-%d %H:%M"), (" - " + note) if note else ""), ""]
     if not requirements:
         lines.append("No requirements registered yet. "
                      "Run `projtruth import-spec spec.md` or add one with req_add.")
         return "\n".join(lines)
-    lines.append("| requirement | status | criteria | evidence | tier | scope "
-                 "| freshest evidence |")
-    lines.append("|---|---|---|---|---|---|---|")
+    head = ("| requirement | status | criteria | evidence | tier | scope "
+            "| freshest evidence |")
+    rule = "|---|---|---|---|---|---|---|"
+    if matched is not None:
+        head += " changed files |"
+        rule += "---|"
+    lines.append(head)
+    lines.append(rule)
     for req in requirements:
         status, _ = compute_status(req, index, clock)
         evs = _req_evidence(req, index)
         freshest, ev, _ = _times(req, evs, clock) if evs else (0.0, {}, 0.0)
         scope = "%d pattern(s)" % len(req["files"]) if req.get("files") else "repo"
-        lines.append("| %s %s | **%s** | %d | %d | %s | %s | %s |"
-                     % (req.get("id", "?"), req.get("title", ""), status,
-                        len(req.get("criteria", [])), len(evs),
-                        ev.get("tier", "-"), scope,
-                        _stamp(freshest) if evs else "-"))
+        row = ("| %s %s | **%s** | %d | %d | %s | %s | %s |"
+               % (req.get("id", "?"), req.get("title", ""), status,
+                  len(req.get("criteria", [])), len(evs),
+                  ev.get("tier", "-"), scope,
+                  _stamp(freshest) if evs else "-"))
+        if matched is not None:
+            hits = matched.get(req.get("id"), [])
+            shown = ", ".join(hits[:2])
+            if len(hits) > 2:
+                shown += " +%d" % (len(hits) - 2)
+            row += " %s |" % (shown or "-")
+        lines.append(row)
     lines.append("")
     attention = []
     for r in requirements:
@@ -110,6 +126,21 @@ def render(requirements, index, clock):
         lines.append("All %d requirement(s) verified with fresh evidence."
                      % len(requirements))
     return "\n".join(lines)
+
+
+def changed_subset(requirements, index, clock, changed):
+    """Requirements a set of changed files touches, plus anything not verified.
+
+    A PR that edits server.py must not report green just because the untouched
+    requirements are fine - and an untouched requirement that was already stale
+    stays visible.
+    """
+    out = []
+    for req in requirements:
+        hits = freshness.matching_changes(req, changed)
+        if hits or compute_status(req, index, clock)[0] != "verified":
+            out.append((req, hits))
+    return out
 
 
 def as_json(requirements, index, clock):
