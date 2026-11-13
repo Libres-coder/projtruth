@@ -101,7 +101,7 @@ HTML 注释形式（`<!-- projtruth: R1 -->`）同样有效，声明优先于文
 
 `git clone` 和 `git checkout` 会重写所有文件的时间戳，只看 mtime 的工具在全新 checkout 上会报"所有代码刚刚都改过"——和事实正好相反。当仓库是 git 工作区时，`projtruth` 用的是**最后一次改到该需求文件的提交时间**，未提交的修改按**该文件自己的 mtime** 计时，而不是"现在"——所以改完代码立刻重跑一次检查，仍然算新证据。非 git 仓库才退回 mtime。
 
-`.projtruth/`、`.claude/`、`.git/`、`.idea/`、`graphify-out/`、`PROGRESS.md`、`README*`、`CHANGELOG*`、`CONTRIBUTING*`、`LICENSE*`、`*.lock` 都不算源码变更——否则光是 `projtruth init` 就能把整个项目刷成红色。有未提交修改的文件按**它自己的 mtime** 计算，而不是"现在"，所以改完代码立刻重跑一次证据，仍然是新证据。
+`.projtruth/`、`.claude/`、`.git/`、`.idea/`、`graphify-out/`、`PROGRESS.md`、`README*`、`CHANGELOG*`、`CONTRIBUTING*`、`LICENSE*`、`*.lock` 都不算源码变更——否则光是 `projtruth init` 就能把整个项目刷成红色。
 
 ## 作用域：精确胜过全仓库飘红
 
@@ -109,6 +109,13 @@ HTML 注释形式（`<!-- projtruth: R1 -->`）同样有效，声明优先于文
 
 ```bash
 projtruth req-scope R1 server.py "web/api/**/*.js"
+```
+
+范围解析为空意味着"永不 stale"，拼错会静默失败；大小写不匹配的路径在 Windows 上成立、在 Linux/CI 上不成立。提交前核对实际解析结果：
+
+```bash
+projtruth scopes            # 每个模式解析成文件、目录、glob 还是空匹配
+projtruth scopes --strict   # 有任何模式无法在所有平台成立时 exit 1
 ```
 
 此后改 `server.py` 只会让 R1 变 stale，前端需求保持 verified。
