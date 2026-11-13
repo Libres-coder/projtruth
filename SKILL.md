@@ -113,6 +113,15 @@ python -m projtruth req-scope R1 server.py
 python -m projtruth req-scope R4 "index.html" "web" "src/**/*.js"
 ```
 
+A scope that resolves to nothing means "never stale": a typo fails silently,
+and a wrong-case path resolves on Windows but not in CI. Check before trusting
+a green report:
+
+```bash
+python -m projtruth scopes            # every pattern, its kind and file count
+python -m projtruth scopes --strict   # exit 1 if one cannot match everywhere
+```
+
 Freshness is git-based when the repo is a git work tree: the newest commit that
 touched those files, or the file's own mtime if it has uncommitted changes -
 never "now", so an edit followed by fresh evidence still counts as verified.

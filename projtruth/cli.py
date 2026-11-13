@@ -6,6 +6,7 @@
   projtruth req-add R9 "title" "criterion" --files "src/api/*.py"
   projtruth req-set R9 implemented|pending
   projtruth req-scope R9 "server.py" "web/**"
+  projtruth scopes [--json] [--strict]  how each requirement's scope resolves
   projtruth scan                       refresh the evidence index
   projtruth report [--json] [--strict]
   projtruth decide "text" --why "reason"
@@ -97,6 +98,10 @@ def _main(argv=None):
                    help="globs whose change makes this requirement stale")
     p = sub.add_parser("req-set"); p.add_argument("id"); p.add_argument("status")
     p = sub.add_parser("req-scope"); p.add_argument("id"); p.add_argument("files", nargs="*")
+    p = sub.add_parser("scopes")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--strict", action="store_true",
+                   help="exit 1 when a scope matches nothing, only case-insensitively, or is unsafe")
     sub.add_parser("scan")
     p = sub.add_parser("report")
     p.add_argument("--json", action="store_true")
@@ -148,6 +153,37 @@ def _main(argv=None):
         ok, msg = store.set_files(repo, args.id.upper(), args.files)
         print(msg)
         return 0 if ok else 1
+    if args.cmd == "scopes":
+        reqs = store.list_requirements(repo)
+        out = []
+        for r in reqs:
+            out.append({"id": r["id"], "title": r.get("title", ""),
+                        "scope": freshness.describe_scope(repo, r.get("files") or [])})
+        if args.json:
+            _utf8_stdout()
+            print(json.dumps(out, ensure_ascii=False, indent=2))
+        else:
+            _utf8_stdout()
+            if not out:
+                print("(no requirements)")
+            for item in out:
+                print("%s  %s" % (item["id"], item["title"]))
+                if not item["scope"]:
+                    print("  (no scope - any source change makes it stale)")
+                for e in item["scope"]:
+                    note = "  - " + e["note"] if e["note"] else ""
+                    print("  %-32s %-7s %d file(s)%s"
+                          % (e["pattern"], e["kind"], e["files"], note))
+        bad = [e for item in out for e in item["scope"]
+               if e["kind"] in ("missing", "unsafe")
+               or "matches nothing" in (e.get("note") or "")
+               or "case-insensitively" in (e.get("note") or "")
+               or "case-sensitively" in (e.get("note") or "")]
+        if args.strict and bad:
+            print("scope check: %d pattern(s) cannot match on every platform"
+                  % len(bad), file=sys.stderr)
+            return 1
+        return 0
     if args.cmd == "scan":
         idx = evidence.scan(repo)
         path = evidence.save_index(repo, idx)

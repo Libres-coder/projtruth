@@ -150,6 +150,18 @@ projtruth req-scope R1 server.py "web/api/**/*.js"
 Editing `server.py` then flips R1 to stale and leaves the UI requirement
 verified.
 
+A scope that resolves to nothing means "never stale" - a typo fails silently,
+and a wrong-case path works on Windows but not in CI. `projtruth scopes` prints
+how every pattern resolves; `--strict` exits 1 when one cannot match on every
+platform:
+
+```bash
+projtruth scopes
+R1  Login is rate-limited
+  app/auth/*.py    glob    3 file(s)
+  server.py        file    1 file(s)
+```
+
 ## MCP tools
 
 | tool | for |
@@ -211,7 +223,8 @@ a pre-commit hook it did not write.
 
 - `import-spec` is a heuristic over headings and bullet prefixes - check its output.
 - Evidence links by filename prefix; `R3-x.md` feeds every `R3.n` criterion.
-- A scope glob that matches nothing means "never stale" - a typo fails silently.
+- A scope glob that matches nothing means "never stale" - a typo fails silently
+  (`projtruth scopes --strict` is the check for it).
 - Scope paths follow the repository's spelling: Windows resolves a wrong-case
   path locally, so a registry written there can match nothing on Linux/CI.
   Write the path as `git ls-files` prints it.

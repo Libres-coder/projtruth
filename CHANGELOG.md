@@ -3,6 +3,17 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-11-14
+
+### Added
+- **`projtruth scopes`** shows how each requirement's file scope resolves: a
+  plain file, a directory with its file count, a glob with its match count, or
+  the reason it resolves to nothing. A scope that matches nothing means "never
+  stale", so a typo fails silently; a wrong-case path resolves on Windows and
+  matches nothing on Linux/CI. `--strict` exits 1 when a pattern cannot match
+  on every platform, and `--json` is there for CI. The glob comparison is
+  path-aware and case-sensitive (`_match_case`), like git's pathspec.
+
 ## [1.2.3] - 2026-11-14
 
 An adversarial review (2026-11-14) found one P0, three P1s and four P2s; all

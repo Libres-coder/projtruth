@@ -75,6 +75,72 @@ def _files_under(directory):
     return out
 
 
+def _match_case(pattern, rel):
+    """Case-sensitive, path-aware glob match: `*` and `?` stay inside a segment,
+    `**` spans directories. Python's glob is case-insensitive on Windows; git's
+    pathspec is not, and neither is CI."""
+    def walk(pp, ss):
+        if not pp:
+            return not ss
+        head = pp[0]
+        if head == "**":
+            return walk(pp[1:], ss) or (bool(ss) and walk(pp, ss[1:]))
+        if not ss:
+            return False
+        return fnmatch.fnmatchcase(ss[0], head) and walk(pp[1:], ss[1:])
+    pat = pattern.replace("\\", "/")
+    while pat.startswith("./"):
+        pat = pat[2:]
+    return walk(pat.split("/"), rel.replace("\\", "/").split("/"))
+
+
+def describe_scope(repo, patterns):
+    """How each scope pattern resolves - including the ways it resolves to
+    nothing, or only on a case-insensitive filesystem.
+
+    A scope that matches nothing means "never stale", so a typo fails silently;
+    a wrong-case path works on Windows and matches nothing on Linux/CI. This is
+    the check for both, without changing what the scope means.
+    """
+    out = []
+    for pattern in patterns or []:
+        p = str(pattern).replace("\\", "/")
+        entry = {"pattern": p, "kind": "", "files": 0, "note": ""}
+        if not _safe_pattern(p):
+            entry.update(kind="unsafe",
+                         note="absolute path or '..' - ignored by every check")
+            out.append(entry)
+            continue
+        if any(ch in p for ch in "*?["):
+            full = os.path.join(repo, p)
+            matches = glob.glob(full, recursive=True)
+            exact = [f for f in matches
+                     if _match_case(p, os.path.relpath(f, repo).replace("\\", "/"))]
+            entry.update(kind="glob", files=len(exact))
+            if not exact:
+                if matches:
+                    entry["note"] = ("matches %d path(s) only case-insensitively; "
+                                     "Linux and CI will match nothing" % len(matches))
+                else:
+                    entry["note"] = "matches nothing - a typo fails silently"
+            out.append(entry)
+            continue
+        real = _existing_case(repo, p)
+        if real is None:
+            entry.update(kind="missing",
+                         note="does not exist at this spelling - a typo fails silently")
+        else:
+            rel = os.path.relpath(real, repo).replace("\\", "/")
+            is_dir = os.path.isdir(real)
+            entry.update(kind="dir" if is_dir else "file",
+                         files=len(_files_under(real)) if is_dir else 1)
+            if rel != os.path.normpath(p).replace("\\", "/"):
+                entry["note"] = ("spelled %r on disk; git and CI match "
+                                 "case-sensitively" % rel)
+        out.append(entry)
+    return out
+
+
 def _existing_case(repo, rel):
     """The path as it exists on disk, resolving spelling on a case-insensitive
     filesystem. A registry written as `server.py` must find `Server.py`; git's

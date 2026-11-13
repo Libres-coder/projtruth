@@ -365,6 +365,63 @@ class JsonTests(unittest.TestCase):
 
 
 @unittest.skipUnless(GIT, "git not installed")
+class ScopeReportTests(unittest.TestCase):
+    """A scope that matches nothing means "never stale" - a typo fails
+    silently. `projtruth scopes` makes the resolution visible."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_exact_file_and_directory(self):
+        mk(os.path.join(self.repo, "src", "app.py"), "x = 1\n")
+        out = dict((e["pattern"], e) for e in
+                   freshness.describe_scope(self.repo, ["src/app.py", "src"]))
+        self.assertEqual(out["src/app.py"]["kind"], "file")
+        self.assertEqual(out["src/app.py"]["files"], 1)
+        self.assertEqual(out["src/app.py"]["note"], "")
+        self.assertEqual(out["src"]["kind"], "dir")
+        self.assertEqual(out["src"]["files"], 1)
+
+    def test_a_glob_that_matches_nothing_says_so(self):
+        mk(os.path.join(self.repo, "src", "app.py"), "x = 1\n")
+        out = freshness.describe_scope(self.repo, ["web/*.js"])[0]
+        self.assertEqual(out["kind"], "glob")
+        self.assertEqual(out["files"], 0)
+        self.assertIn("matches nothing", out["note"])
+
+    def test_match_case_is_path_aware(self):
+        self.assertTrue(freshness._match_case("src/*.py", "src/a.py"))
+        self.assertTrue(freshness._match_case("src/**/*.py", "src/a.py"))
+        self.assertTrue(freshness._match_case("src/**/*.py", "src/x/a.py"))
+        self.assertFalse(freshness._match_case("SRC/*.py", "src/a.py"))
+        self.assertFalse(freshness._match_case("src/*.py", "src/x/a.py"))
+
+    def test_a_case_mismatch_is_explained(self):
+        mk(os.path.join(self.repo, "src", "App.py"), "x = 1\n")
+        out = freshness.describe_scope(self.repo, ["src/app.py"])[0]
+        if os.name == "nt":
+            self.assertEqual(out["kind"], "file")
+            self.assertIn("case-sensitively", out["note"])
+            self.assertIn("App.py", out["note"])
+        else:
+            self.assertEqual(out["kind"], "missing")
+
+    def test_an_unsafe_pattern_is_named(self):
+        out = freshness.describe_scope(self.repo, ["../outside.py"])[0]
+        self.assertEqual(out["kind"], "unsafe")
+
+    def test_cli_strict_fails_on_a_scope_that_matches_nothing(self):
+        store.init(self.repo)
+        store.add_requirement(self.repo, "R1", "t", ["c"], files=["src/*.py"])
+        self.assertEqual(cli.main(["--repo", self.repo, "scopes", "--strict"]), 1)
+        mk(os.path.join(self.repo, "src", "app.py"), "x = 1\n")
+        self.assertEqual(cli.main(["--repo", self.repo, "scopes", "--strict"]), 0)
+
+
 class GitFreshnessTests(unittest.TestCase):
     """The reason this module exists: mtime lies after a clone or checkout."""
 
