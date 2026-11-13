@@ -75,6 +75,29 @@ def _files_under(directory):
     return out
 
 
+def _existing_case(repo, rel):
+    """The path as it exists on disk, resolving spelling on a case-insensitive
+    filesystem. A registry written as `server.py` must find `Server.py`; git's
+    pathspec matching is case-sensitive even where Windows is not."""
+    cur = repo
+    parts = [p for p in str(rel).replace("\\", "/").split("/") if p not in ("", ".")]
+    for part in parts:
+        try:
+            names = os.listdir(cur)
+        except OSError:
+            return None
+        if part in names:
+            cur = os.path.join(cur, part)
+            continue
+        if os.name != "nt":
+            return None
+        hit = next((n for n in names if n.lower() == part.lower()), None)
+        if hit is None:
+            return None
+        cur = os.path.join(cur, hit)
+    return cur
+
+
 def expand(repo, patterns):
     """Resolve repo-relative globs to existing files (absolute paths, deduped).
 
@@ -92,10 +115,12 @@ def expand(repo, patterns):
                     out.append(f)
                 elif os.path.isdir(f) and not _ignored_dir(f, repo):
                     out.extend(_files_under(f))
-        elif os.path.isfile(full):
-            out.append(full)
-        elif os.path.isdir(full) and not _ignored_dir(full, repo):
-            out.extend(_files_under(full))
+            continue
+        real = _existing_case(repo, p)
+        if real and os.path.isfile(real):
+            out.append(real)
+        elif real and os.path.isdir(real) and not _ignored_dir(real, repo):
+            out.extend(_files_under(real))
     return sorted(set(out))
 
 
@@ -215,13 +240,19 @@ def _glob_match(rel, pattern):
 
 
 def path_matches(rel, pattern):
-    """Does a repo-relative path fall under a requirement's file pattern?"""
+    """Does a repo-relative path fall under a requirement's file pattern?
+
+    Compared case-insensitively on Windows: the filesystem is, and git is not,
+    so `Server.py` edited against a `server.py` scope must still match.
+    """
     rel = rel.replace("\\", "/")
     p = str(pattern).replace("\\", "/")
     if p.startswith("./"):
         p = p[2:]
     if not _safe_pattern(p):
         return False
+    if os.name == "nt":
+        rel, p = rel.lower(), p.lower()
     if any(ch in p for ch in "*?["):
         return _glob_match(rel, p)
     p = p.rstrip("/")
@@ -318,7 +349,13 @@ class Clock(object):
             return _mtime_newest(self.repo, patterns)
         files = expand(self.repo, patterns) if patterns else []
         if patterns and not files:
-            return 0.0
+            # The scope resolves to nothing: the implementation may have been
+            # deleted or renamed. Git still remembers the deletion commit; a
+            # pattern that never matched anything returns 0.0, which is
+            # "nothing that could be stale". Returning 0.0 for a deleted file
+            # used to keep the requirement verified after `git rm`.
+            specs = [str(p).replace("\\", "/").rstrip("/") for p in patterns]
+            return self._log_time(specs)
         dirty = self._dirty_paths() if self.use_dirty else []
         if patterns:
             rels = [os.path.relpath(f, self.repo).replace("\\", "/") for f in files]

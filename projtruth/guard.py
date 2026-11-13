@@ -69,21 +69,34 @@ def _ids_for(req):
     return [i for i in ids if i]
 
 
+def _evidence_ids(repo, rel):
+    """Ids this evidence file proves, from its basename or its directive.
+
+    Returns None when the file cannot be read: a staged deletion is not staged
+    evidence, and counting it as such used to disarm the guard.
+    """
+    base = os.path.basename(rel)
+    m = evidence.CRIT_RE.match(base)
+    ids = set([m.group(1).upper()]) if m else set()
+    try:
+        with open(os.path.join(repo, rel), encoding="utf-8-sig", errors="replace") as f:
+            ids |= set(evidence.declared_ids(f.read()))
+    except OSError:
+        return None
+    return ids
+
+
 def _staged_evidence_for(repo, req, staged):
-    """Evidence staged for this requirement, by filename prefix or directive."""
+    """Evidence staged for this requirement, by exact id or directive.
+
+    Exact, not prefix: `R10-rerun.md` proves R10, not R1.
+    """
     ids = set(_ids_for(req))
     for rel in staged:
         if not _is_evidence(rel):
             continue
-        base = os.path.basename(rel).upper()
-        if any(base.startswith(i) for i in ids):
-            return rel
-        try:
-            with open(os.path.join(repo, rel), encoding="utf-8-sig", errors="replace") as f:
-                body = f.read()
-        except OSError:
-            continue
-        if ids & set(evidence.declared_ids(body)):
+        found = _evidence_ids(repo, rel)
+        if found and ids & found:
             return rel
     return None
 
@@ -96,7 +109,7 @@ def evaluate(repo):
     staged = staged_files(repo)
     if not staged:
         return []
-    idx = evidence.scan(repo)
+    idx = evidence.scan_head(repo)              # what HEAD proves, not the worktree
     clock = freshness.Clock(repo, dirty=False)   # judge what HEAD proves
     blocking = []
     for req in reqs:
@@ -115,6 +128,12 @@ def evaluate(repo):
 def main(repo, allow=False):
     try:
         blocking = evaluate(repo)
+    except store.RegistryUnreadable as e:
+        # Fail closed: an unreadable registry is not "no requirements".
+        sys.stderr.write("projtruth: %s\n" % e)
+        sys.stderr.write("projtruth: commit blocked - the guard cannot read the "
+                         "registry\n")
+        return 1
     except Exception as e:                     # a guard must never brick commits
         sys.stderr.write("projtruth: guard error (%s) - commit allowed\n" % e)
         return 0

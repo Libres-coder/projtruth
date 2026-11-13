@@ -20,6 +20,15 @@ VALID_STATUS = ("pending", "implemented", "verified", "stale", "unverified")
 # verified/stale/unverified are computed from evidence; only these two are declarable.
 DECLARABLE_STATUS = ("pending", "implemented")
 REQ_ID_RE = re.compile(r"^R\d+$")
+CRIT_ID_RE = re.compile(r"^R\d+(?:\.\d+)?$", re.IGNORECASE)
+
+
+class RegistryUnreadable(OSError):
+    """The registry exists but cannot be read (lock, permissions).
+
+    Distinct from an empty registry: treating it as empty would let a commit
+    through with the gate silently off.
+    """
 
 
 def state_dir(repo):
@@ -51,9 +60,10 @@ def load(repo):
             data = json.load(f)
     except FileNotFoundError:
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
-    except OSError:
+    except OSError as exc:
         # sharing violation, permissions... not proof the file is damaged
-        return {"schema_version": SCHEMA_VERSION, "requirements": []}
+        raise RegistryUnreadable("cannot read %s: %s"
+                                 % (_req_path(repo), exc)) from exc
     except (ValueError, UnicodeDecodeError):
         _quarantine(repo)
         return {"schema_version": SCHEMA_VERSION, "requirements": []}
@@ -66,19 +76,38 @@ def load(repo):
 
 
 def _valid_registry(data):
-    """Shape check deep enough that the report can never crash on it."""
+    """Shape check deep enough that the report can never crash on it.
+
+    `files` must be a list of strings: a bare string used to be iterated
+    character by character, and an int crashed the report. Ids are checked
+    because a criterion id nobody can link is a promise that silently
+    disappears. Duplicates are rejected: two R1 rows mean `req-set R1` updates
+    one of them and reports success.
+    """
     if not isinstance(data, dict):
         return False
     reqs = data.get("requirements", [])
     if not isinstance(reqs, list):
         return False
+    seen = set()
     for r in reqs:
         if not isinstance(r, dict) or not isinstance(r.get("id"), str):
+            return False
+        rid = r["id"].strip().upper()
+        if not REQ_ID_RE.match(rid) or rid in seen:
+            return False
+        seen.add(rid)
+        files = r.get("files", [])
+        if files is None:
+            files = []
+        if not isinstance(files, list) or any(not isinstance(f, str) for f in files):
             return False
         if not isinstance(r.get("criteria", []), list):
             return False
         for c in r.get("criteria", []):
             if not isinstance(c, dict) or not isinstance(c.get("id"), str):
+                return False
+            if not CRIT_ID_RE.match(c["id"].strip()):
                 return False
     return True
 
@@ -168,7 +197,7 @@ def add_requirement(repo, req_id, title, criteria=None, files=None):
         return False, "file patterns must stay inside the repo: %s" % ", ".join(map(str, bad))
     data = load(repo)
     for r in data["requirements"]:
-        if r.get("id") == req_id:
+        if r.get("id", "").strip().upper() == req_id:
             return False, "requirement %s already exists" % req_id
     crit = []
     for i, c in enumerate(criteria or [], 1):
@@ -195,7 +224,7 @@ def set_status(repo, req_id, status):
     req_id = _norm_id(req_id)
     data = load(repo)
     for r in data["requirements"]:
-        if r.get("id") == req_id:
+        if r.get("id", "").strip().upper() == req_id:
             r["status"] = status
             save(repo, data)
             return True, "%s -> %s" % (req_id, status)
@@ -213,7 +242,7 @@ def set_files(repo, req_id, files):
     req_id = _norm_id(req_id)
     data = load(repo)
     for r in data["requirements"]:
-        if r.get("id") == req_id:
+        if r.get("id", "").strip().upper() == req_id:
             r["files"] = [str(f) for f in files]
             save(repo, data)
             return True, "%s now scoped to %d pattern(s)" % (req_id, len(files))

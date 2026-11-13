@@ -3,6 +3,34 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-11-14
+
+An adversarial review (2026-11-14) found one P0, three P1s and four P2s; all
+fixed, 61 -> 69 tests.
+
+### Fixed
+- **P0: deleting or renaming the implementation left the requirement
+  verified**, and `report --changed --strict` passed a branch that removed the
+  file. A scope that resolves to no file now asks git for the deletion commit
+  (a pattern that never matched anything still counts as "nothing to be
+  stale"). Covered for deletion, file scope, directory scope and rename.
+- **The guard matched evidence by prefix**, so `R10-rerun.md` counted as
+  evidence for R1. It matches the exact id from the filename or the
+  `projtruth:` directive.
+- **A staged deletion of evidence counted as staged evidence.** The guard now
+  reads evidence as of HEAD and ignores files that no longer exist.
+- **Case-insensitive filesystems**: a scope written `server.py` never matched
+  the tracked `Server.py` in git's case-sensitive pathspec. Expansion resolves
+  the real spelling, and path matching is case-insensitive on Windows.
+- Registry validation: `files` must be a list of strings (a bare string was
+  iterated character by character; an int crashed the report); duplicate ids
+  and criterion ids that can never be linked are quarantined; id lookups are
+  case-normalized.
+- An unreadable registry (lock, permissions) no longer looks like an empty one:
+  it raises, the CLI exits 2, and the guard **fails closed** instead of letting
+  the commit through.
+- `PROJTRUTH_ALLOW_STALE=0` no longer enables the bypass.
+
 ## [1.2.2] - 2026-11-14
 
 ### Added

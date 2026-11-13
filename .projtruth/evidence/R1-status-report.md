@@ -1,13 +1,13 @@
 # R1 status is computed from evidence and real code changes
 
-_Run at 2026-11-14 01:38:05_
+_Run at 2026-11-14 04:12:16_
 
 ```
 $ python -m unittest tests.test_core.ReportTests -v   # exit 0
-# projtruth status report (2026-11-14 01:38)
+# projtruth status report (2026-11-14 04:12)
 
 No requirements registered yet. Run `projtruth import-spec spec.md` or add one with req_add.
-# projtruth status report (2026-11-14 01:38)
+# projtruth status report (2026-11-14 04:12)
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence |
 |---|---|---|---|---|---|---|
@@ -15,7 +15,7 @@ No requirements registered yet. Run `projtruth import-spec spec.md` or add one w
 
 ## Needs attention (1 of 1)
 - R1 (pending, not started): no evidence
-# projtruth status report (2026-11-14 01:38)
+# projtruth status report (2026-11-14 04:12)
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence |
 |---|---|---|---|---|---|---|
@@ -37,9 +37,10 @@ test_table_reports_evidence_tier (tests.test_core.ReportTests) ... ok
 test_verified_evidence_without_a_tier_is_reported_in_quality (tests.test_core.ReportTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 0.646s
+Ran 9 tests in 0.606s
 
 OK
+
 ```
 
 measured

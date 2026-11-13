@@ -15,6 +15,7 @@ import glob
 import json
 import os
 import re
+import subprocess
 
 TIER_RE = re.compile(r"measured|inferred|guessed", re.IGNORECASE)
 # A tier on its own line is the convention; anywhere else can be a word
@@ -58,6 +59,66 @@ def declared_ids(body):
     return ids
 
 
+def _is_evidence_rel(rel):
+    p = rel.replace("\\", "/")
+    return p.startswith(".projtruth/evidence/") or (
+        p.startswith(".claude/skills/verify-") and "/evidence/" in p)
+
+
+def _entry(rel, body, mtime):
+    tier_m = TIER_LINE_RE.search(body) or TIER_RE.search(body)
+    return {"file": rel,
+            "tier": (tier_m.group(0).strip().lower() if tier_m else "none"),
+            "mtime": mtime}
+
+
+def _keys_for(rel, body):
+    keys = declared_ids(body)
+    if not keys:
+        m = CRIT_RE.match(os.path.basename(rel))
+        if not m:
+            return []
+        keys = [m.group(1).upper()]
+    return keys
+
+
+def scan_head(repo):
+    """Evidence as of HEAD, not the working tree.
+
+    The commit guard judges what HEAD proves: a staged `git rm` of the evidence
+    must not make the requirement look like it never had any.
+    """
+    try:
+        p = subprocess.run(["git", "-C", repo, "ls-tree", "-r", "--name-only",
+                            "-z", "HEAD"], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if p.returncode != 0:
+        return {}
+    names = [n for n in p.stdout.decode("utf-8", "surrogateescape").split("\0") if n]
+    index = {}
+    for rel in names:
+        rel = rel.replace("\\", "/")
+        if not _is_evidence_rel(rel):
+            continue
+        try:
+            show = subprocess.run(["git", "-C", repo, "show", "HEAD:" + rel],
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if show.returncode != 0:
+            continue
+        body = show.stdout.decode("utf-8-sig", "replace")
+        entry = _entry(rel, body, 0.0)
+        for key in _keys_for(rel, body):
+            index.setdefault(key, []).append(dict(entry))
+    for crit in index:
+        index[crit].sort(key=lambda e: e["file"])
+    return index
+
+
 def scan(repo):
     """Return index: {criterion_id: [{file, tier, mtime}]} (sorted oldest->newest)."""
     index = {}
@@ -73,19 +134,9 @@ def scan(repo):
             mtime = os.path.getmtime(f)
         except OSError:
             continue          # deleted between the glob and the read
-        keys = declared_ids(body)
-        if not keys:
-            m = CRIT_RE.match(os.path.basename(f))
-            if not m:
-                continue
-            keys = [m.group(1).upper()]
-        tier_m = TIER_LINE_RE.search(body) or TIER_RE.search(body)
-        entry = {
-            "file": os.path.relpath(f, repo).replace("\\", "/"),
-            "tier": (tier_m.group(0).strip().lower() if tier_m else "none"),
-            "mtime": mtime,
-        }
-        for key in keys:
+        rel = os.path.relpath(f, repo).replace("\\", "/")
+        entry = _entry(rel, body, mtime)
+        for key in _keys_for(rel, body):
             index.setdefault(key, []).append(dict(entry))
     for crit in index:
         index[crit].sort(key=lambda e: e["mtime"])

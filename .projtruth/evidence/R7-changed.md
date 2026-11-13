@@ -1,6 +1,6 @@
 # R7 report --changed scopes to touched requirements
 
-_Run at 2026-11-14 01:38:06_
+_Run at 2026-11-14 04:12:20_
 
 ```
 $ python -m unittest tests.test_guard.GlobTests -v   # exit 0
@@ -13,11 +13,12 @@ test_single_star_stops_at_a_slash (tests.test_guard.GlobTests) ... ok
 Ran 4 tests in 0.001s
 
 OK
+
 ```
 
 ```
 $ python -m projtruth report --changed HEAD   # only server.py changed   # exit 0
-# projtruth status report (2026-11-14 01:38) - changes since HEAD: 2 file(s), 2 requirement(s) in scope
+# projtruth status report (2026-11-14 04:12) - changes since HEAD: 2 file(s), 2 requirement(s) in scope
 
 | requirement | status | criteria | evidence | tier | scope | freshest evidence | changed files |
 |---|---|---|---|---|---|---|---|

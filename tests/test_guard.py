@@ -57,6 +57,93 @@ class DirectiveTests(unittest.TestCase):
                              "verified")
 
 
+class ReviewFixesTests(unittest.TestCase):
+    """Regressions from the 2026-11-14 review: a gate that passes a deleted
+    implementation is worse than no gate."""
+
+    def _git(self, tmp, *args, date=None):
+        env = dict(os.environ)
+        if date is not None:
+            env["GIT_COMMITTER_DATE"] = env["GIT_AUTHOR_DATE"] = str(date)
+        subprocess.run([GIT, "-C", tmp] + list(args), check=True,
+                       capture_output=True, env=env)
+
+    def _repo(self, tmp, files=("app.py",), scope=None, evidence_name="R1-ok.md"):
+        store.init(tmp)
+        store.add_requirement(tmp, "R1", "t", ["c"],
+                              files=list(scope if scope is not None else files))
+        for i, rel in enumerate(files):
+            mk(os.path.join(tmp, rel), "x = 1\n")
+        mk(os.path.join(tmp, ".projtruth", "evidence", evidence_name),
+           "```\nok\n```\nmeasured\n")
+        self._git(tmp, "init", "-q")
+        self._git(tmp, "config", "user.email", "t@example.com")
+        self._git(tmp, "config", "user.name", "t")
+        self._git(tmp, "add", "-A")
+        self._git(tmp, "commit", "-qm", "init", date=1700000000)
+
+    def _status(self, tmp):
+        req = store.list_requirements(tmp)[0]
+        return report.compute_status(req, evidence.scan(tmp),
+                                     freshness.Clock(tmp))[0]
+
+    def test_deleting_the_only_file_makes_the_requirement_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp)
+            self.assertEqual(self._status(tmp), "verified")
+            self._git(tmp, "rm", "-q", "app.py")
+            self._git(tmp, "commit", "-qm", "remove", date=1700000100)
+            self.assertEqual(self._status(tmp), "stale",
+                             "a deleted implementation is a change")
+
+    def test_evidence_for_R10_does_not_excuse_R1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            store.add_requirement(tmp, "R1", "one", ["c"], files=["app.py"])
+            store.add_requirement(tmp, "R10", "ten", ["c"], files=["ten.py"])
+            for rel in ("app.py", "ten.py"):
+                mk(os.path.join(tmp, rel), "x = 1\n")
+            for rel in ("R1-ok.md", "R10-ok.md"):
+                mk(os.path.join(tmp, ".projtruth", "evidence", rel),
+                   "```\nok\n```\nmeasured\n")
+            self._git(tmp, "init", "-q")
+            self._git(tmp, "config", "user.email", "t@example.com")
+            self._git(tmp, "config", "user.name", "t")
+            self._git(tmp, "add", "-A")
+            self._git(tmp, "commit", "-qm", "init", date=1700000000)
+            mk(os.path.join(tmp, "app.py"), "x = 2\n")
+            self._git(tmp, "add", "app.py")
+            blocking = guard.evaluate(tmp)
+            self.assertEqual([r["id"] for r, _ in blocking], ["R1"])
+            mk(os.path.join(tmp, ".projtruth", "evidence", "R10-rerun.md"),
+               "```\nok\n```\nmeasured\n")
+            self._git(tmp, "add", ".projtruth/evidence/R10-rerun.md")
+            blocking = guard.evaluate(tmp)
+            self.assertEqual([r["id"] for r, _ in blocking], ["R1"],
+                             "R10 evidence must not count for R1")
+
+    def test_a_staged_evidence_deletion_is_not_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp)
+            mk(os.path.join(tmp, "app.py"), "x = 2\n")
+            self._git(tmp, "add", "app.py")
+            self._git(tmp, "rm", "-q", ".projtruth/evidence/R1-ok.md")
+            self.assertEqual([r["id"] for r, _ in guard.evaluate(tmp)], ["R1"])
+
+    @unittest.skipUnless(os.name == "nt", "case-insensitive filesystem")
+    def test_a_scope_in_a_different_case_still_matches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp, files=("Server.py",), scope=("server.py",))
+            self.assertEqual(self._status(tmp), "verified")
+            mk(os.path.join(tmp, "Server.py"), "x = 2\n")
+            self._git(tmp, "add", "Server.py")
+            self.assertEqual([r["id"] for r, _ in guard.evaluate(tmp)], ["R1"])
+            self._git(tmp, "commit", "-qm", "edit", date=1700000100)
+            req = store.list_requirements(tmp)[0]
+            self.assertEqual(report.compute_status(req, evidence.scan(tmp),
+                                                   freshness.Clock(tmp))[0], "stale")
+
+
 class GlobTests(unittest.TestCase):
     def test_double_star_spans_directories(self):
         self.assertTrue(freshness.path_matches("web/app.js", "web/**/*.js"))

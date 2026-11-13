@@ -74,6 +74,14 @@ def _utf8_stdout():
 
 
 def main(argv=None):
+    try:
+        return _main(argv)
+    except store.RegistryUnreadable as exc:
+        sys.stderr.write("projtruth: %s\n" % exc)
+        return 2
+
+
+def _main(argv=None):
     ap = argparse.ArgumentParser(prog="projtruth")
     ap.add_argument("--repo", default=os.getcwd(),
                     help="repository to read/write (default: cwd)")
@@ -187,7 +195,9 @@ def main(argv=None):
         return 0
     if args.cmd == "guard":
         from . import guard
-        return guard.main(repo, allow=args.allow or bool(os.environ.get("PROJTRUTH_ALLOW_STALE")))
+        allow = args.allow or str(os.environ.get("PROJTRUTH_ALLOW_STALE", "")) \
+            .strip().lower() in ("1", "true", "yes", "on")
+        return guard.main(repo, allow=allow)
     if args.cmd == "hook":
         from . import guard
         return guard.hook_command(repo, args.action, force=args.force)

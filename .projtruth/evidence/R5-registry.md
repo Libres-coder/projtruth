@@ -1,4 +1,6 @@
-# R5 registry writes are atomic and tolerant of damaged logs
+# R5 Registry writes are atomic and tolerant of damaged logs
+
+_Run at 2026-11-14 04:12:17_
 
 ```
 $ python -m unittest tests.test_core.StoreTests -v   # exit 0
@@ -12,9 +14,10 @@ test_single_strings_are_not_split_into_characters (tests.test_core.StoreTests) .
 test_unsafe_file_patterns_are_rejected (tests.test_core.StoreTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 0.096s
+Ran 8 tests in 0.067s
 
 OK
+
 ```
 
 measured

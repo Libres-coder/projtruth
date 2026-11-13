@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -188,6 +189,45 @@ class EvidenceTests(unittest.TestCase):
             evidence.save_index(tmp, evidence.scan(tmp))
             loaded = evidence.load_index(tmp) or {}
             self.assertIn("R1", loaded)
+
+
+class RegistryValidationTests(unittest.TestCase):
+    """Malformed-but-plausible registries must be quarantined, not half-read."""
+
+    def _registry(self, tmp, body):
+        mk(os.path.join(tmp, ".projtruth", "requirements.json"), body)
+
+    def _quarantined(self, tmp):
+        return [n for n in os.listdir(os.path.join(tmp, ".projtruth"))
+                if ".corrupt-" in n]
+
+    def test_files_must_be_a_list_of_strings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._registry(tmp, '{"requirements": [{"id": "R1", '
+                                '"files": "app.py", "criteria": []}]}')
+            self.assertEqual(store.list_requirements(tmp), [])
+            self.assertTrue(self._quarantined(tmp))
+
+    def test_duplicate_ids_are_quarantined(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._registry(tmp, '{"requirements": [{"id": "R1", "criteria": []}, '
+                                '{"id": "r1", "criteria": []}]}')
+            self.assertEqual(store.list_requirements(tmp), [])
+            self.assertTrue(self._quarantined(tmp))
+
+    def test_a_criterion_id_that_cannot_link_is_quarantined(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._registry(tmp, '{"requirements": [{"id": "R1", "criteria": '
+                                '[{"id": "foo", "text": "x"}]}]}')
+            self.assertEqual(store.list_requirements(tmp), [])
+            self.assertTrue(self._quarantined(tmp))
+
+    def test_unreadable_registry_raises_instead_of_looking_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store.init(tmp)
+            with mock.patch("builtins.open", side_effect=PermissionError("busy")):
+                with self.assertRaises(store.RegistryUnreadable):
+                    store.load(tmp)
 
 
 class ReportTests(unittest.TestCase):
