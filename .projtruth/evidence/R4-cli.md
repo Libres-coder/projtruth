@@ -1,6 +1,6 @@
 # R4 CLI mirrors the core and gates CI
 
-_Run at 2026-11-14 06:03:32_
+_Run at 2026-11-14 06:12:45_
 
 ```
 $ python -m unittest tests.test_core.ScopeReportTests -v   # exit 0
@@ -17,7 +17,7 @@ test_exact_file_and_directory (tests.test_core.ScopeReportTests) ... ok
 test_match_case_is_path_aware (tests.test_core.ScopeReportTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 6 tests in 0.034s
+Ran 6 tests in 0.035s
 
 OK
 ```

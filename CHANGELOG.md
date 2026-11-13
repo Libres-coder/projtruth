@@ -3,6 +3,19 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2026-11-14
+
+### Fixed
+- **The MCP server reported a hard-coded version (`1.2.1`) and a stale
+  registration example.** It reports `projtruth.__version__` now, and the
+  docstring names `python -m projtruth.mcp_server` - the same command the
+  README gives. The server is registered at user scope in Claude Code.
+
+### Changed
+- `scripts/gen_evidence.py` regenerates evidence for all 8 requirements, not
+  only the four a change happened to touch, so a release's proof is fully
+  reproducible.
+
 ## [1.2.4] - 2026-11-14
 
 ### Added

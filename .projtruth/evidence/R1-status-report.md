@@ -1,6 +1,6 @@
 # R1 Status is computed from evidence and real code changes
 
-_Run at 2026-11-14 06:03:20_
+_Run at 2026-11-14 06:12:34_
 
 ```
 $ python -m unittest tests.test_core.GitFreshnessTests -v   # exit 0
@@ -23,7 +23,7 @@ An edit at 10:00 and evidence written at 10:05: the evidence answers ... ok
 test_untracked_directory_of_new_source_files_counts (tests.test_core.GitFreshnessTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 11 tests in 11.781s
+Ran 11 tests in 10.072s
 
 OK
 ```

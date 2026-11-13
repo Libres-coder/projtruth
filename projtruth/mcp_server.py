@@ -1,7 +1,7 @@
 """projtruth MCP server (stdio, newline-delimited JSON-RPC 2.0, zero deps).
 
 Register with Claude Code:
-  claude mcp add projtruth -- python D:/path/to/projtruth/mcp_server.py
+  claude mcp add projtruth -s user -- python -m projtruth.mcp_server
 (or point at this file from any MCP client). Repo under analysis:
   env PROJTRUTH_REPO, else the process cwd.
 
@@ -15,9 +15,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # make the package importable
 
-from projtruth import evidence, freshness, report, store  # noqa: E402
+from projtruth import __version__, evidence, freshness, report, store  # noqa: E402
 
-SERVER_INFO = {"name": "projtruth", "version": "1.2.1"}
+SERVER_INFO = {"name": "projtruth", "version": __version__}
 PROTOCOL = "2025-03-26"
 
 TOOLS = [
